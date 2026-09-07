@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>PSD 圖層逐張檢視與批量匯出工具 (Tool 2 Pro ZIP)</title>
+    <script src="https://cdn.jsdelivr.net/npm/ag-psd/dist/bundle.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; height: 100vh; background: #1e1e1e; color: #fff; overflow: hidden; }
+
+        #app-body { display: flex; width: 100vw; height: 100vh; }
+
+        /* 左側控制面板 */
+        #sidebar { width: 340px; background: #252526; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; border-right: 1px solid #3c3c3c; flex-shrink: 0; z-index: 10; }
+        #sidebar h2 { font-size: 15px; border-bottom: 1px solid #444; padding-bottom: 6px; color: #569cd6; }
+        .control-group { background: #2d2d2d; padding: 10px; border-radius: 6px; border: 1px solid #3c3c3c; }
+        .control-group h3 { font-size: 12px; margin-bottom: 8px; color: #4ec9b0; }
+        label { display: flex; align-items: center; justify-content: space-between; font-size: 12px; margin: 6px 0; color: #ccc; }
+        input[type="number"], select { width: 90px; background: #3c3c3c; border: 1px solid #555; color: #fff; padding: 4px; border-radius: 4px; font-size: 12px; }
+        input[type="color"] { border: none; width: 30px; height: 24px; cursor: pointer; background: transparent; }
+        .row-inputs { display: flex; gap: 8px; }
+        .row-inputs label { flex: 1; margin: 0; }
+        button { background: #0e639c; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; width: 100%; font-weight: bold; transition: 0.2s; }
+        button:hover { background: #1177bb; }
+        button.export-btn { background: #28a745; margin-top: 5px; }
+        button.export-btn:hover { background: #218838; }
+
+        .checkbox-label { justify-content: flex-start; gap: 8px; cursor: pointer; }
+        .checkbox-label input { cursor: pointer; }
+
+        /* 中央預覽區 */
+        #main { flex: 1; display: flex; flex-direction: column; background: #181818; overflow: hidden; position: relative; }
+        #toolbar { background: #2d2d2d; padding: 8px 15px; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid #3c3c3c; font-size: 12px; flex-shrink: 0; z-index: 10; }
+        #toolbar input[type="range"] { flex: 1; max-width: 150px; }
+        .tips-text { margin-left: auto; font-size: 11px; color: #aaa; background: rgba(0, 0, 0, 0.3); padding: 4px 10px; border-radius: 4px; border: 1px solid #444; display: flex; gap: 12px; }
+        .tips-text b { color: #4ec9b0; }
+
+        /* 中央畫布視域 */
+        #viewport { flex: 1; overflow: hidden; position: relative; background-image: radial-gradient(#333 1px, transparent 0); background-size: 20px 20px; cursor: default; }
+        #viewport.panning { cursor: grabbing !important; }
+        #pan-wrapper { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); transform-origin: 0 0; will-change: transform; }
+        #scale-wrapper { display: inline-block; transform-origin: center center; transition: transform 0.05s ease-out; }
+
+        /* 單張預覽容器 */
+        #preview-stage { position: relative; background: rgba(255,255,255,0.03); border: 1px dashed #666; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; border-radius: 4px; box-sizing: border-box; }
+        #preview-stage img { position: absolute; pointer-events: none; }
+        #preview-stage .label { position: absolute; bottom: var(--offset-y, 8px); left: 50%; transform: translateX(-50%); font-size: var(--font-size, 12px); color: #fff; text-shadow: 1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000; pointer-events: none; white-space: nowrap; font-weight: bold; }
+
+        /* 右側圖層庫面板 */
+        #right-panel { width: 260px; background: #252526; border-left: 1px solid #3c3c3c; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; overflow: hidden; position: relative; }
+        .panel-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #444; padding: 10px 12px; background: #252526; z-index: 20; }
+        .panel-header h2 { font-size: 13px; color: #d7ba7d; margin: 0; }
+        .panel-header .zoom-info { font-size: 11px; color: #888; display: flex; align-items: center; gap: 6px; }
+        .panel-header button { width: auto; padding: 2px 6px; font-size: 10px; background: #444; }
+
+        #palette-viewport { flex: 1; overflow: hidden; position: relative; background: #1e1e1e; cursor: default; }
+        #palette-viewport.panning { cursor: grabbing !important; }
+        #palette-pan-wrapper { position: absolute; top: 0; left: 0; width: 100%; transform-origin: 0 0; will-change: transform; }
+        
+        #palette-container { 
+            padding: 10px; 
+            display: grid; 
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px; 
+            align-content: start;
+            --palette-scale: 1;
+        }
+        
+        .palette-item { background: rgba(0,0,0,0.3); border: 1px solid #444; border-radius: 4px; padding: 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: transform 0.1s; position: relative; user-select: none; }
+        .palette-item:hover { border-color: #4ec9b0; transform: scale(1.03); background: #333; }
+        .palette-item.active { border: 2px solid #007acc; background: rgba(0, 122, 204, 0.2); box-shadow: 0 0 10px rgba(0, 122, 204, 0.5); }
+        .palette-img-box { width: 100%; height: calc(70px * var(--palette-scale)); min-height: 40px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .palette-item img { object-fit: contain; width: 100%; height: 100%; pointer-events: none; }
+        .palette-item span { font-size: calc(10px * Math.max(0.8, var(--palette-scale))); color: #ccc; margin-top: 4px; text-align: center; word-break: break-all; pointer-events: none; }
+
+        #alert { color: #ff9800; font-size: 11px; line-height: 1.4; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+<div id="app-body">
+    <!-- 左側面板 -->
+    <div id="sidebar">
+        <h2>PSD 逐張批量輸出工具 (Tool 2)</h2>
+        
+        <div class="control-group">
+            <h3>1. 載入 PSD 檔案</h3>
+            <input type="file" id="psdInput" accept=".psd" style="width:100%">
+        </div>
+
+        <div class="control-group">
+            <h3>2. 選擇資料夾 / 群組</h3>
+            <select id="groupSelect" style="width:100%"><option value="">請先載入 PSD 檔案</option></select>
+        </div>
+
+        <div class="control-group">
+            <h3>3. 位置與畫布基準模式</h3>
+            <label class="checkbox-label">
+                <input type="checkbox" id="useRelativePos"> 記錄 PSD 相對位置 (自動以 PSD 畫布為基準)
+            </label>
+        </div>
+
+        <div class="control-group">
+            <h3>4. 圖層畫布尺寸設定 (px)</h3>
+            <label class="checkbox-label" style="margin-bottom: 8px; color: #4ec9b0;">
+                <input type="checkbox" id="syncCanvasSize" checked> 統一畫布大小 (套用到所有圖層)
+            </label>
+            <div class="row-inputs">
+                <label>寬: <input type="number" id="canvasW" value="300"></label>
+                <label>高: <input type="number" id="canvasH" value="300"></label>
+            </div>
+            <div id="canvasHint" style="font-size:10px; color:#aaa; margin-top:6px;">勾選「統一」時，調整將會同步更新群組內所有圖層</div>
+        </div>
+
+        <div class="control-group">
+            <h3>5. 圖層名稱標籤顯示</h3>
+            <label class="checkbox-label">
+                <input type="checkbox" id="showLabel" checked> 顯示名稱文字
+            </label>
+            <div class="row-inputs">
+                <label>字體大小: <input type="number" id="fontSize" value="14" min="8"></label>
+                <label>距底部: <input type="number" id="offsetY" value="12"></label>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3>6. 批量輸出設定</h3>
+            <label>圖片格式: 
+                <select id="exportFormat" style="width:100px;">
+                    <option value="png">PNG</option>
+                    <option value="jpeg">JPG</option>
+                </select>
+            </label>
+            <label>背景類型: 
+                <select id="bgType" style="width:100px;">
+                    <option value="transparent">透明 (限PNG)</option>
+                    <option value="color">自訂顏色</option>
+                </select>
+            </label>
+            <label id="bgColorLabel" style="display:none;">背景顏色: 
+                <input type="color" id="bgColor" value="#ffffff">
+            </label>
+            <button id="btnExport" class="export-btn">📦 打包成 ZIP 一鍵下載全部</button>
+        </div>
+        <div id="alert"></div>
+    </div>
+
+    <!-- 中央預覽區 -->
+    <div id="main">
+        <div id="toolbar">
+            <span>🔍 視角縮放:</span>
+            <input type="range" id="zoomSlider" min="10" max="200" value="100" step="2.5">
+            <span id="zoomVal" style="width: 45px;">100%</span>
+            <button id="btnResetZoom" style="width: auto; padding: 3px 8px; font-size: 11px;">100% / 重置位置</button>
+            <div class="tips-text">
+                <span>🖱️ <b>點擊右側圖檔</b> 進行預覽</span>
+                <span>🖱️ <b>滑鼠滾輪</b> 縮放畫布視角</span>
+                <span>✋ <b>中鍵拖曳</b> 移動視角</span>
+            </div>
+        </div>
+        <div id="viewport">
+            <div id="pan-wrapper">
+                <div id="scale-wrapper">
+                    <div id="preview-stage"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右側圖層庫 -->
+    <div id="right-panel">
+        <div class="panel-header">
+            <h2>📂 群組內圖層列表</h2>
+            <div class="zoom-info">
+                <span id="paletteZoomVal">100% (2列)</span>
+                <button id="btnResetPaletteZoom">重置</button>
+            </div>
+        </div>
+        <div id="palette-viewport">
+            <div id="palette-pan-wrapper">
+                <div id="palette-container"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentLoadedGroups = {};
+    let currentGroupItems = []; 
+    let selectedIndex = 0;
+    let psdCanvasWidth = 0;
+    let psdCanvasHeight = 0;
+
+    const psdInput = document.getElementById('psdInput');
+    const groupSelect = document.getElementById('groupSelect');
+    const useRelativePos = document.getElementById('useRelativePos');
+    const syncCanvasSize = document.getElementById('syncCanvasSize');
+    const canvasWInput = document.getElementById('canvasW');
+    const canvasHInput = document.getElementById('canvasH');
+    const canvasHint = document.getElementById('canvasHint');
+    const showLabelCheck = document.getElementById('showLabel');
+    const fontSizeInput = document.getElementById('fontSize');
+    const offsetYInput = document.getElementById('offsetY');
+    
+    const viewport = document.getElementById('viewport');
+    const panWrapper = document.getElementById('pan-wrapper');
+    const scaleWrapper = document.getElementById('scale-wrapper');
+    const previewStage = document.getElementById('preview-stage');
+    
+    const paletteViewport = document.getElementById('palette-viewport');
+    const palettePanWrapper = document.getElementById('palette-pan-wrapper');
+    const paletteContainer = document.getElementById('palette-container');
+    const paletteZoomVal = document.getElementById('paletteZoomVal');
+    const btnResetPaletteZoom = document.getElementById('btnResetPaletteZoom');
+
+    const alertDiv = document.getElementById('alert');
+    const zoomSlider = document.getElementById('zoomSlider');
+    const zoomVal = document.getElementById('zoomVal');
+    const btnResetZoom = document.getElementById('btnResetZoom');
+
+    const exportFormat = document.getElementById('exportFormat');
+    const bgType = document.getElementById('bgType');
+    const bgColorLabel = document.getElementById('bgColorLabel');
+    const bgColorInput = document.getElementById('bgColor');
+
+    let currentZoom = 100;
+    let panX = 0, panY = 0;
+    let isPanning = false;
+    let startX = 0, startY = 0;
+
+    let paletteZoom = 100;
+    let palettePanY = 0;
+    let isPalettePanning = false;
+    let paletteStartY = 0;
+
+    function updateTransform() {
+        zoomSlider.value = currentZoom;
+        zoomVal.innerText = currentZoom.toFixed(1) + '%';
+        scaleWrapper.style.transform = `scale(${currentZoom / 100})`;
+        panWrapper.style.transform = `translate(calc(-50% + ${panX}px), calc(-50% + ${panY}px))`;
+    }
+
+    function updatePaletteTransform() {
+        let cols = 2;
+        if (paletteZoom > 140) cols = 1;
+        else if (paletteZoom < 70) cols = 3;
+
+        paletteZoomVal.innerText = `${Math.round(paletteZoom)}% (${cols}列)`;
+        paletteContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        paletteContainer.style.setProperty('--palette-scale', paletteZoom / 100);
+        palettePanWrapper.style.transform = `translate(0px, ${palettePanY}px)`;
+    }
+
+    paletteViewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 10 : -10;
+        paletteZoom = Math.min(Math.max(40, paletteZoom + delta), 220);
+        updatePaletteTransform();
+    }, { passive: false });
+
+    paletteViewport.addEventListener('mousedown', (e) => {
+        if (e.button === 1) {
+            e.preventDefault();
+            isPalettePanning = true;
+            paletteStartY = e.clientY - palettePanY;
+            paletteViewport.classList.add('panning');
+        }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (isPanning) {
+            panX = e.clientX - startX;
+            panY = e.clientY - startY;
+            updateTransform();
+        }
+        if (isPalettePanning) {
+            palettePanY = e.clientY - paletteStartY;
+            updatePaletteTransform();
+        }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+        if (e.button === 1) { 
+            if (isPanning) { isPanning = false; viewport.classList.remove('panning'); }
+            if (isPalettePanning) { isPalettePanning = false; paletteViewport.classList.remove('panning'); }
+        }
+    });
+
+    btnResetPaletteZoom.addEventListener('click', () => { paletteZoom = 100; palettePanY = 0; updatePaletteTransform(); });
+    zoomSlider.addEventListener('input', (e) => { currentZoom = parseFloat(e.target.value); updateTransform(); });
+    btnResetZoom.addEventListener('click', () => { currentZoom = 100; panX = 0; panY = 0; updateTransform(); });
+
+    viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 2.5 : -2.5;
+        currentZoom = Math.min(Math.max(10, currentZoom + delta), 200);
+        updateTransform();
+    }, { passive: false });
+
+    viewport.addEventListener('mousedown', (e) => {
+        if (e.button === 1) {
+            e.preventDefault();
+            isPanning = true;
+            startX = e.clientX - panX;
+            startY = e.clientY - panY;
+            viewport.classList.add('panning');
+        }
+    });
+
+    exportFormat.addEventListener('change', updateBgOptionVisibility);
+    bgType.addEventListener('change', updateBgOptionVisibility);
+
+    function updateBgOptionVisibility() {
+        if (exportFormat.value === 'jpeg') {
+            bgType.value = 'color'; bgType.disabled = true; bgColorLabel.style.display = 'flex';
+        } else {
+            bgType.disabled = false; bgColorLabel.style.display = (bgType.value === 'color') ? 'flex' : 'none';
+        }
+    }
+
+    // 載入 PSD
+    psdInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        alertDiv.innerText = "⏳ 解析 PSD 中...";
+        const buffer = await file.arrayBuffer();
+        const psd = agPsd.readPsd(buffer);
+        
+        psdCanvasWidth = psd.width;
+        psdCanvasHeight = psd.height;
+        currentLoadedGroups = {};
+
+        if (psd.children) {
+            psd.children.forEach(child => {
+                if (child.children) {
+                    const groupName = child.name;
+                    const items = [];
+                    child.children.forEach(layer => {
+                        if (layer.canvas) {
+                            items.push({ 
+                                name: layer.name, 
+                                canvas: layer.canvas,
+                                url: layer.canvas.toDataURL(),
+                                left: layer.left,
+                                top: layer.top,
+                                width: layer.canvas.width,
+                                height: layer.canvas.height,
+                                canvasW: 300, 
+                                canvasH: 300  
+                            });
+                        }
+                    });
+                    if (items.length > 0) currentLoadedGroups[groupName] = items;
+                }
+            });
+        }
+
+        populateGroupSelect();
+    });
+
+    function populateGroupSelect() {
+        groupSelect.innerHTML = '';
+        const groupKeys = Object.keys(currentLoadedGroups);
+
+        if (groupKeys.length === 0) {
+            alertDiv.innerText = "❌ 找不到可用的圖層群組！";
+            return;
+        }
+
+        alertDiv.innerText = "";
+        groupKeys.forEach(gName => {
+            const opt = document.createElement('option');
+            opt.value = gName; 
+            opt.innerText = `${gName} (${currentLoadedGroups[gName].length} 個圖層)`;
+            groupSelect.appendChild(opt);
+        });
+
+        panX = 0; panY = 0; palettePanY = 0; selectedIndex = 0;
+        updateGroupData();
+    }
+
+    groupSelect.addEventListener('change', () => { selectedIndex = 0; updateGroupData(); });
+
+    useRelativePos.addEventListener('change', () => {
+        resetAllItemsCanvasSize();
+        syncUIWithCurrentItem();
+        renderStage();
+    });
+
+    syncCanvasSize.addEventListener('change', () => {
+        if (syncCanvasSize.checked) {
+            canvasHint.innerText = "勾選「統一」時，調整將會同步更新群組內所有圖層";
+            const currentItem = currentGroupItems[selectedIndex];
+            if (currentItem) {
+                applyCanvasSizeToAll(currentItem.canvasW, currentItem.canvasH);
+            }
+        } else {
+            canvasHint.innerText = "未勾選「統一」時，調整僅作用於當前選取的單一圖層";
+        }
+    });
+
+    function applyCanvasSizeToAll(w, h) {
+        currentGroupItems.forEach(item => {
+            item.canvasW = w;
+            item.canvasH = h;
+        });
+    }
+
+    canvasWInput.addEventListener('input', () => {
+        const val = parseInt(canvasWInput.value) || 10;
+        const item = currentGroupItems[selectedIndex];
+        if (!item) return;
+
+        if (syncCanvasSize.checked) {
+            applyCanvasSizeToAll(val, currentGroupItems[selectedIndex].canvasH);
+        } else {
+            item.canvasW = val;
+        }
+        renderStage();
+    });
+
+    canvasHInput.addEventListener('input', () => {
+        const val = parseInt(canvasHInput.value) || 10;
+        const item = currentGroupItems[selectedIndex];
+        if (!item) return;
+
+        if (syncCanvasSize.checked) {
+            applyCanvasSizeToAll(currentGroupItems[selectedIndex].canvasW, val);
+        } else {
+            item.canvasH = val;
+        }
+        renderStage();
+    });
+
+    [showLabelCheck, fontSizeInput, offsetYInput].forEach(el => {
+        el.addEventListener('input', renderStage);
+    });
+
+    function resetAllItemsCanvasSize() {
+        if (currentGroupItems.length === 0) return;
+
+        let defaultW = 300;
+        let defaultH = 300;
+
+        if (useRelativePos.checked) {
+            defaultW = psdCanvasWidth;
+            defaultH = psdCanvasHeight;
+        } else {
+            let maxW = 0;
+            let maxH = 0;
+
+            currentGroupItems.forEach(item => {
+                if (item.width > maxW) maxW = item.width;
+                if (item.height > maxH) maxH = item.height;
+            });
+
+            defaultW = maxW > 0 ? maxW : 300;
+            defaultH = maxH > 0 ? maxH : 300;
+        }
+
+        applyCanvasSizeToAll(defaultW, defaultH);
+    }
+
+    function updateGroupData() {
+        const groupName = groupSelect.value;
+        if (!groupName || !currentLoadedGroups[groupName]) return;
+        
+        currentGroupItems = currentLoadedGroups[groupName];
+        resetAllItemsCanvasSize();
+        renderPalette();
+        syncUIWithCurrentItem();
+        renderStage();
+    }
+
+    function syncUIWithCurrentItem() {
+        const item = currentGroupItems[selectedIndex];
+        if (!item) return;
+
+        canvasWInput.value = item.canvasW;
+        canvasHInput.value = item.canvasH;
+    }
+
+    function renderPalette() {
+        paletteContainer.innerHTML = '';
+        currentGroupItems.forEach((item, idx) => {
+            const div = document.createElement('div');
+            div.className = `palette-item ${idx === selectedIndex ? 'active' : ''}`;
+            
+            const imgBox = document.createElement('div');
+            imgBox.className = 'palette-img-box';
+
+            const img = document.createElement('img');
+            img.src = item.url;
+            imgBox.appendChild(img);
+
+            const label = document.createElement('span');
+            label.innerText = item.name;
+            
+            div.appendChild(imgBox);
+            div.appendChild(label);
+            
+            div.addEventListener('click', () => {
+                selectedIndex = idx;
+                updatePaletteSelection();
+                syncUIWithCurrentItem(); 
+                renderStage();
+            });
+
+            paletteContainer.appendChild(div);
+        });
+    }
+
+    function updatePaletteSelection() {
+        const items = paletteContainer.querySelectorAll('.palette-item');
+        items.forEach((item, idx) => {
+            if (idx === selectedIndex) item.classList.add('active');
+            else item.classList.remove('active');
+        });
+    }
+
+    function renderStage() {
+        const item = currentGroupItems[selectedIndex];
+        if (!item) return;
+
+        const cWidth = item.canvasW;
+        const cHeight = item.canvasH;
+        
+        previewStage.style.width = cWidth + 'px';
+        previewStage.style.height = cHeight + 'px';
+        previewStage.innerHTML = '';
+
+        let imgLeft = 0;
+        let imgTop = 0;
+
+        if (useRelativePos.checked) {
+            const layerCenterX = item.left + (item.width / 2);
+            const layerCenterY = item.top + (item.height / 2);
+            const dx = layerCenterX - (psdCanvasWidth / 2);
+            const dy = layerCenterY - (psdCanvasHeight / 2);
+
+            imgLeft = (cWidth / 2) + dx - (item.width / 2);
+            imgTop = (cHeight / 2) + dy - (item.height / 2);
+        } else {
+            imgLeft = (cWidth - item.width) / 2;
+            imgTop = (cHeight - item.height) / 2;
+        }
+
+        const img = document.createElement('img');
+        img.src = item.url;
+        img.style.left = imgLeft + 'px';
+        img.style.top = imgTop + 'px';
+        img.style.width = item.width + 'px';
+        img.style.height = item.height + 'px';
+
+        previewStage.appendChild(img);
+
+        if (showLabelCheck.checked) {
+            const label = document.createElement('div');
+            label.className = 'label';
+            label.innerText = item.name;
+            label.style.setProperty('--offset-y', offsetYInput.value + 'px');
+            label.style.setProperty('--font-size', fontSizeInput.value + 'px');
+            previewStage.appendChild(label);
+        }
+    }
+
+    // 打包成 ZIP 一鍵下載
+    document.getElementById('btnExport').addEventListener('click', async () => {
+        if (currentGroupItems.length === 0) {
+            alert('沒有可輸出的圖層！');
+            return;
+        }
+
+        const isJpeg = exportFormat.value === 'jpeg';
+        const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
+        const ext = isJpeg ? 'jpg' : 'png';
+        const groupName = groupSelect.value || "export_layers";
+
+        const nameCounts = {};
+        currentGroupItems.forEach(item => {
+            nameCounts[item.name] = (nameCounts[item.name] || 0) + 1;
+        });
+
+        const nameTracker = {};
+        const zip = new JSZip();
+
+        alertDiv.innerText = `⏳ 正在產生並壓縮 ${currentGroupItems.length} 張圖片，請稍候...`;
+
+        for (let i = 0; i < currentGroupItems.length; i++) {
+            const item = currentGroupItems[i];
+            const cWidth = item.canvasW;
+            const cHeight = item.canvasH;
+            
+            const exportCanvas = document.createElement('canvas');
+            exportCanvas.width = cWidth;
+            exportCanvas.height = cHeight;
+            const ctx = exportCanvas.getContext('2d');
+
+            if (bgType.value === 'color' || isJpeg) {
+                ctx.fillStyle = bgColorInput.value;
+                ctx.fillRect(0, 0, cWidth, cHeight);
+            }
+
+            let offX = 0;
+            let offY = 0;
+
+            if (useRelativePos.checked) {
+                const dx = (item.left + item.width / 2) - (psdCanvasWidth / 2);
+                const dy = (item.top + item.height / 2) - (psdCanvasHeight / 2);
+                offX = (cWidth / 2) + dx - (item.width / 2);
+                offY = (cHeight / 2) + dy - (item.height / 2);
+            } else {
+                offX = (cWidth - item.width) / 2;
+                offY = (cHeight - item.height) / 2;
+            }
+
+            ctx.drawImage(item.canvas, offX, offY, item.width, item.height);
+
+            if (showLabelCheck.checked) {
+                const fontSize = parseInt(fontSizeInput.value) || 14;
+                const offsetY = parseInt(offsetYInput.value) || 12;
+
+                ctx.font = `bold ${fontSize}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                const tx = cWidth / 2;
+                const ty = cHeight - offsetY;
+
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 3;
+                ctx.strokeText(item.name, tx, ty);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(item.name, tx, ty);
+            }
+
+            let fileName = item.name;
+            if (nameCounts[item.name] > 1) {
+                if (nameTracker[item.name] === undefined) {
+                    nameTracker[item.name] = 0;
+                } else {
+                    nameTracker[item.name]++;
+                }
+                const seq = String(nameTracker[item.name]).padStart(2, '0');
+                fileName = `${item.name}${seq}`;
+            }
+
+            // 將 canvas dataUrl 轉為 Base64 放入 Zip
+            const dataUrl = exportCanvas.toDataURL(mimeType, 0.95);
+            const base64Data = dataUrl.replace(/^data:image\/(png|jpeg);base64,/, "");
+            zip.file(`${fileName}.${ext}`, base64Data, { base64: true });
+        }
+
+        alertDiv.innerText = "⚡ 正在打包成 ZIP 壓縮檔...";
+        const content = await zip.generateAsync({ type: "blob" });
+        saveAs(content, `${groupName}.zip`);
+
+        alertDiv.innerText = "✅ 壓縮檔已下載完成！";
+    });
+
+    updateBgOptionVisibility();
+    updateTransform();
+    updatePaletteTransform();
+</script>
+</body>
+</html>
