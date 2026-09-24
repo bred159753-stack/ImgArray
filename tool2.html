@@ -107,6 +107,9 @@
             <label class="checkbox-label" style="margin-bottom: 8px; color: #4ec9b0;">
                 <input type="checkbox" id="syncCanvasSize" checked> 統一畫布大小 (套用到所有圖層)
             </label>
+            <label class="checkbox-label" id="autoDetectSizeWrapper" style="display:none; margin-bottom: 8px; color: #ce9178;">
+                <input type="checkbox" id="autoDetectSize"> 自動偵測每個圖的大小並設定為畫布大小
+            </label>
             <div class="row-inputs">
                 <label>寬: <input type="number" id="canvasW" value="300"></label>
                 <label>高: <input type="number" id="canvasH" value="300"></label>
@@ -197,6 +200,8 @@
     const groupSelect = document.getElementById('groupSelect');
     const useRelativePos = document.getElementById('useRelativePos');
     const syncCanvasSize = document.getElementById('syncCanvasSize');
+    const autoDetectSize = document.getElementById('autoDetectSize');
+    const autoDetectSizeWrapper = document.getElementById('autoDetectSizeWrapper');
     const canvasWInput = document.getElementById('canvasW');
     const canvasHInput = document.getElementById('canvasH');
     const canvasHint = document.getElementById('canvasHint');
@@ -386,6 +391,9 @@
 
     useRelativePos.addEventListener('change', () => {
         resetAllItemsCanvasSize();
+        if (!syncCanvasSize.checked && autoDetectSize.checked) {
+            applyAutoDetectSizeToAll();
+        }
         syncUIWithCurrentItem();
         renderStage();
     });
@@ -393,19 +401,48 @@
     syncCanvasSize.addEventListener('change', () => {
         if (syncCanvasSize.checked) {
             canvasHint.innerText = "勾選「統一」時，調整將會同步更新群組內所有圖層";
+            autoDetectSizeWrapper.style.display = 'none';
+            autoDetectSize.checked = false;
+            canvasWInput.disabled = false;
+            canvasHInput.disabled = false;
             const currentItem = currentGroupItems[selectedIndex];
             if (currentItem) {
                 applyCanvasSizeToAll(currentItem.canvasW, currentItem.canvasH);
             }
         } else {
             canvasHint.innerText = "未勾選「統一」時，調整僅作用於當前選取的單一圖層";
+            autoDetectSizeWrapper.style.display = 'flex';
         }
+        syncUIWithCurrentItem();
+        renderStage();
+    });
+
+    autoDetectSize.addEventListener('change', () => {
+        if (autoDetectSize.checked) {
+            canvasHint.innerText = "已啟用自動偵測：每張圖的畫布尺寸將自動設為該圖片本身的尺寸";
+            applyAutoDetectSizeToAll();
+            canvasWInput.disabled = true;
+            canvasHInput.disabled = true;
+        } else {
+            canvasHint.innerText = "未勾選「統一」時，調整僅作用於當前選取的單一圖層";
+            canvasWInput.disabled = false;
+            canvasHInput.disabled = false;
+        }
+        syncUIWithCurrentItem();
+        renderStage();
     });
 
     function applyCanvasSizeToAll(w, h) {
         currentGroupItems.forEach(item => {
             item.canvasW = w;
             item.canvasH = h;
+        });
+    }
+
+    function applyAutoDetectSizeToAll() {
+        currentGroupItems.forEach(item => {
+            item.canvasW = item.width;
+            item.canvasH = item.height;
         });
     }
 
@@ -470,6 +507,9 @@
         
         currentGroupItems = currentLoadedGroups[groupName];
         resetAllItemsCanvasSize();
+        if (!syncCanvasSize.checked && autoDetectSize.checked) {
+            applyAutoDetectSizeToAll();
+        }
         renderPalette();
         syncUIWithCurrentItem();
         renderStage();
