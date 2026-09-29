@@ -2,26 +2,145 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>綜合工具箱網頁版</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; background: #1e1e1e; color: #fff; overflow: hidden; }
+        :root {
+            --bg-dark: #120e12;
+            --text-primary: #f5f2ee;
+            --text-secondary: #cbbfb6;
+            --text-muted: #8e837a;
+            --accent-warm: #d3bead;
+            --accent-gold: #e2b067;
+            --accent-white: #ffffff;
+            --accent-black: #0d0c0e;
+            --border-glass: rgba(255, 255, 255, 0.18);
+            --border-glass-light: rgba(255, 255, 255, 0.3);
+            --border-subtle: rgba(255, 255, 255, 0.08);
+            --card-glass: rgba(255, 255, 255, 0.06);
+            --font-main: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif;
+            --radius-pill: 9999px;
+            --radius-xl: 20px;
+        }
 
-        /* 上方頁籤列 */
-        #tab-bar { height: 35px; background: #181818; border-bottom: 1px solid #333; display: flex; align-items: center; padding: 0 10px; gap: 4px; user-select: none; }
-        .tab-button { padding: 6px 14px; font-size: 12px; background: #252526; color: #999; border: 1px solid #333; border-bottom: none; border-radius: 4px 4px 0 0; cursor: pointer; transition: 0.15s; }
-        .tab-button:hover { background: #2d2d2d; color: #ccc; }
-        .tab-button.active { background: #2d2d2d; color: #4ec9b0; font-weight: bold; border-color: #0e639c; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body { 
+            font-family: var(--font-main); 
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+            color: var(--text-primary); 
+            overflow: hidden; 
+            background-color: #1a1518;
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(200, 160, 140, 0.35) 0%, rgba(0, 0, 0, 0) 70%),
+                radial-gradient(ellipse 60% 40% at 85% 90%, rgba(160, 110, 95, 0.25) 0%, rgba(0, 0, 0, 0) 70%),
+                linear-gradient(135deg, rgba(18, 14, 18, 0.85) 0%, rgba(10, 8, 10, 0.95) 100%),
+                url('image/bg.jpg'),
+                linear-gradient(135deg, #2a2225 0%, #131013 100%);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* 上方標題與頁籤列 */
+        #tab-bar { 
+            height: 52px; 
+            background: rgba(20, 16, 18, 0.45); 
+            backdrop-filter: blur(24px) saturate(140%);
+            -webkit-backdrop-filter: blur(24px) saturate(140%);
+            border-bottom: 1px solid var(--border-subtle); 
+            display: flex; 
+            align-items: center; 
+            padding: 0 20px; 
+            gap: 10px; 
+            user-select: none; 
+            z-index: 100;
+        }
+
+        .brand-logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 800;
+            color: var(--text-primary);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-right: 16px;
+            padding-right: 16px;
+            border-right: 1px solid var(--border-subtle);
+        }
+
+        .brand-logo span {
+            font-size: 10px;
+            background: var(--accent-white);
+            color: var(--accent-black);
+            padding: 2px 7px;
+            border-radius: var(--radius-pill);
+        }
+
+        .tab-button { 
+            padding: 8px 18px; 
+            font-size: 12px; 
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.05); 
+            color: var(--text-secondary); 
+            border: 1px solid var(--border-glass); 
+            border-radius: var(--radius-pill); 
+            cursor: pointer; 
+            transition: all 0.25s ease; 
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            backdrop-filter: blur(12px);
+        }
+
+        .tab-button:hover { 
+            background: rgba(255, 255, 255, 0.12); 
+            color: var(--text-primary); 
+            border-color: var(--border-glass-light);
+            transform: translateY(-1px);
+        }
+
+        .tab-button.active { 
+            background: var(--accent-white); 
+            color: var(--accent-black); 
+            font-weight: 800; 
+            border-color: var(--accent-white);
+            box-shadow: 0 4px 16px rgba(255, 255, 255, 0.2);
+        }
 
         /* 工具內容顯示區 (iframe 載入區) */
-        #content-area { flex: 1; position: relative; width: 100%; height: calc(100vh - 35px); background: #181818; }
-        iframe { width: 100%; height: 100%; border: none; display: block; }
+        #content-area { 
+            flex: 1; 
+            position: relative; 
+            width: 100%; 
+            height: calc(100vh - 52px); 
+            background: transparent; 
+        }
+
+        iframe { 
+            width: 100%; 
+            height: 100%; 
+            border: none; 
+            display: block; 
+            background: transparent;
+        }
     </style>
 </head>
 <body>
 
     <!-- 頁籤導覽列 -->
-    <div id="tab-bar"></div>
+    <div id="tab-bar">
+        <div class="brand-logo">
+            <span>ImgArray</span> Test
+        </div>
+    </div>
 
     <!-- 內容容器 -->
     <div id="content-area">
@@ -41,15 +160,20 @@
 
     // 初始化頁籤
     function initTabs() {
-        tabBar.innerHTML = '';
-        toolsConfig.forEach((tool, index) => {
+        const tabsWrapper = document.createElement('div');
+        tabsWrapper.style.display = 'flex';
+        tabsWrapper.style.gap = '8px';
+
+        toolsConfig.forEach((tool) => {
             const btn = document.createElement('div');
             btn.className = 'tab-button';
             btn.innerText = tool.name;
             btn.dataset.id = tool.id;
             btn.onclick = () => switchTab(tool.id);
-            tabBar.appendChild(btn);
+            tabsWrapper.appendChild(btn);
         });
+
+        tabBar.appendChild(tabsWrapper);
 
         // 預設載入第一個工具
         if (toolsConfig.length > 0) {
