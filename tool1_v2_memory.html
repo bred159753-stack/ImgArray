@@ -1,0 +1,2223 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圖層與圖檔排列匯出工具 (高畫質原尺寸繪製版)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/ag-psd/dist/bundle.js"></script>
+    <style>
+        :root {
+            /* Warm Earth & Dusk Atmospheric Palette */
+            --bg-dark: #120e12;
+            --bg-glass-top: rgba(230, 222, 215, 0.16);
+            --bg-glass-bottom: rgba(180, 168, 158, 0.08);
+            --card-glass: rgba(255, 255, 255, 0.07);
+            --card-glass-hover: rgba(255, 255, 255, 0.13);
+            --card-glass-active: rgba(255, 255, 255, 0.20);
+            
+            --border-glass: rgba(255, 255, 255, 0.18);
+            --border-glass-light: rgba(255, 255, 255, 0.28);
+            --border-subtle: rgba(255, 255, 255, 0.08);
+            
+            --text-primary: #f5f2ee;
+            --text-secondary: #cbbfb6;
+            --text-muted: #8e837a;
+            
+            /* Accent Colors */
+            --accent-black: #0d0c0e;
+            --accent-white: #ffffff;
+            --accent-warm: #d3bead;
+            --accent-warm-soft: rgba(211, 190, 173, 0.18);
+            --accent-gold: #e2b067;
+            --accent-gold-soft: rgba(226, 176, 103, 0.2);
+            --danger-red: #e05d53;
+            --active-blue: #6398eb;
+            
+            --font-main: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", sans-serif;
+            --radius-pill: 9999px;
+            --radius-xl: 26px;
+            --radius-lg: 18px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body { 
+            font-family: var(--font-main); 
+            display: flex; 
+            height: 100vh; 
+            color: var(--text-primary); 
+            overflow: hidden; 
+            -webkit-font-smoothing: antialiased;
+            background-color: #1a1518;
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(200, 160, 140, 0.25) 0%, rgba(0, 0, 0, 0) 70%),
+                radial-gradient(ellipse 60% 40% at 85% 90%, rgba(160, 110, 95, 0.20) 0%, rgba(0, 0, 0, 0) 70%),
+                linear-gradient(135deg, rgba(18, 14, 18, 0.70) 0%, rgba(10, 8, 10, 0.85) 100%),
+                url('image/bg.jpg'),
+                linear-gradient(135deg, #2a2225 0%, #131013 100%);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        #app-body { 
+            display: flex; 
+            width: calc(100vw - 32px); 
+            height: calc(100vh - 32px); 
+            margin: 16px; 
+            border-radius: var(--radius-xl); 
+            overflow: hidden; 
+            background: rgba(20, 16, 18, 0.25); 
+            border: 1px solid var(--border-glass-light); 
+            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.75), inset 0 1px 1px rgba(255, 255, 255, 0.4); 
+            position: relative;
+        }
+
+        #sidebar { 
+            width: 350px; 
+            background: rgba(20, 16, 18, 0.45);
+            backdrop-filter: blur(12px) saturate(130%);
+            -webkit-backdrop-filter: blur(12px) saturate(130%);
+            padding: 20px; 
+            overflow-y: auto; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 14px; 
+            border-right: 1px solid var(--border-subtle); 
+            flex-shrink: 0; 
+            z-index: 10; 
+            box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.08);
+        }
+
+        #sidebar::-webkit-scrollbar, #folderTree::-webkit-scrollbar { width: 5px; height: 5px; }
+        #sidebar::-webkit-scrollbar-thumb, #folderTree::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 999px; }
+
+        #sidebar .app-title { 
+            font-size: 14px; 
+            font-weight: 700; 
+            padding: 4px 4px 12px; 
+            border-bottom: 1px solid var(--border-subtle); 
+            color: var(--text-primary); 
+            letter-spacing: 0.04em; 
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        #sidebar .app-title .brand-badge {
+            font-size: 10px;
+            font-weight: 800;
+            background: var(--accent-white);
+            color: var(--accent-black);
+            padding: 2px 8px;
+            border-radius: var(--radius-pill);
+            letter-spacing: 0.06em;
+        }
+
+        .control-group { 
+            background: var(--card-glass); 
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            padding: 14px 16px; 
+            border-radius: var(--radius-lg); 
+            border: 1px solid var(--border-glass); 
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 24px rgba(0, 0, 0, 0.15);
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+        .control-group:hover {
+            border-color: rgba(255, 255, 255, 0.35);
+            background: rgba(255, 255, 255, 0.09);
+        }
+
+        .control-group h3 { 
+            font-size: 11px; 
+            font-weight: 700; 
+            margin-bottom: 12px; 
+            color: var(--text-primary); 
+            text-transform: uppercase; 
+            letter-spacing: 0.1em; 
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .control-group h3 .num-tag {
+            font-size: 13px;
+            font-weight: 800;
+            color: var(--accent-warm);
+            letter-spacing: -0.02em;
+        }
+
+        label { 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            font-size: 12px; 
+            margin: 8px 0; 
+            color: var(--text-secondary); 
+            font-weight: 500;
+        }
+
+        input[type="number"], input[type="text"], select { 
+            width: 85px; 
+            background: rgba(0, 0, 0, 0.35); 
+            border: 1px solid var(--border-glass); 
+            color: var(--text-primary); 
+            padding: 6px 10px; 
+            border-radius: var(--radius-sm); 
+            font-size: 12px; 
+            font-family: inherit; 
+            font-weight: 600;
+            transition: all 0.2s ease; 
+        }
+
+        input[type="number"]:focus, input[type="text"]:focus, select:focus { 
+            outline: none; 
+            border-color: var(--accent-white); 
+            background: rgba(0, 0, 0, 0.55);
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15); 
+        }
+
+        input[type="range"] { accent-color: var(--accent-white); cursor: pointer; }
+        input[type="checkbox"], input[type="radio"] { accent-color: var(--accent-white); cursor: pointer; width: 14px; height: 14px; }
+        input[type="color"] { border: 1px solid var(--border-glass); border-radius: var(--radius-sm); width: 34px; height: 26px; cursor: pointer; background: transparent; padding: 2px; }
+
+        input[type="file"] { font-family: inherit; font-size: 11px; color: var(--text-secondary); }
+        input[type="file"]::file-selector-button { 
+            font-family: inherit; 
+            font-size: 11px; 
+            font-weight: 700; 
+            background: var(--accent-black); 
+            color: var(--accent-white); 
+            border: 1px solid var(--border-glass); 
+            border-radius: var(--radius-pill); 
+            padding: 6px 14px; 
+            margin-right: 10px; 
+            cursor: pointer; 
+            transition: all 0.2s ease; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        input[type="file"]::file-selector-button:hover { 
+            background: var(--accent-white); 
+            color: var(--accent-black);
+            transform: translateY(-1px);
+        }
+
+        .row-inputs { display: flex; gap: 8px; }
+        .row-inputs label { flex: 1; margin: 0; }
+
+        .source-type-selector { 
+            display: flex; 
+            gap: 4px; 
+            margin-bottom: 12px; 
+            font-size: 12px; 
+            padding: 4px; 
+            background: rgba(0, 0, 0, 0.4); 
+            border-radius: var(--radius-pill); 
+            border: 1px solid var(--border-subtle); 
+        }
+        .source-type-selector label { 
+            justify-content: center; 
+            flex: 1; 
+            margin: 0; 
+            padding: 6px 10px; 
+            gap: 6px; 
+            cursor: pointer; 
+            border-radius: var(--radius-pill); 
+            transition: all 0.2s ease;
+            font-weight: 600;
+        }
+        .source-type-selector label:has(input:checked) { 
+            background: var(--accent-white); 
+            color: var(--accent-black); 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        }
+
+        button { 
+            background: var(--accent-white); 
+            color: var(--accent-black); 
+            border: 1px solid transparent; 
+            padding: 10px 16px; 
+            border-radius: var(--radius-pill); 
+            cursor: pointer; 
+            font-size: 12px; 
+            font-family: inherit; 
+            width: 100%; 
+            font-weight: 700; 
+            letter-spacing: 0.02em;
+            transition: all 0.2s ease; 
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        button:hover { 
+            background: var(--accent-warm); 
+            transform: translateY(-1px); 
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3); 
+        }
+        button:active { transform: translateY(1px); }
+
+        button.clear-btn { 
+            background: rgba(255, 255, 255, 0.08); 
+            color: var(--text-primary); 
+            border: 1px solid var(--border-glass); 
+            margin-top: 6px; 
+        }
+        button.clear-btn:hover { 
+            background: var(--danger-red); 
+            color: #fff;
+            border-color: transparent; 
+            box-shadow: 0 6px 20px rgba(224, 93, 83, 0.4); 
+        }
+
+        button.export-btn { 
+            background: var(--accent-black); 
+            color: var(--accent-white); 
+            border: 1px solid var(--border-glass-light); 
+            margin-top: 8px; 
+        }
+        button.export-btn:hover { 
+            background: var(--accent-white); 
+            color: var(--accent-black); 
+        }
+
+        #main { flex: 1; display: flex; flex-direction: column; background: transparent; overflow: hidden; position: relative; }
+
+        #toolbar { 
+            background: rgba(20, 16, 18, 0.45); 
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 0 20px; 
+            height: 54px; 
+            display: flex; 
+            align-items: center; 
+            gap: 16px; 
+            border-bottom: 1px solid var(--border-subtle); 
+            font-size: 12px; 
+            color: var(--text-secondary); 
+            flex-shrink: 0; 
+            z-index: 10; 
+            position: relative; 
+        }
+        #toolbar input[type="range"] { flex: 1; max-width: 140px; }
+        #toolbar button { 
+            padding: 5px 14px !important; 
+            background: rgba(255, 255, 255, 0.1); 
+            color: var(--text-primary); 
+            border: 1px solid var(--border-glass); 
+            font-weight: 600; 
+            border-radius: var(--radius-pill); 
+        }
+        #toolbar button:hover { background: var(--accent-white); color: var(--accent-black); }
+
+        .tips-wrapper { margin-left: auto; position: relative; }
+        .tips-icon-btn { 
+            background: rgba(255, 255, 255, 0.1); 
+            border: 1px solid var(--border-glass); 
+            color: var(--accent-white); 
+            border-radius: 50%; 
+            width: 30px; 
+            height: 30px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            cursor: pointer; 
+            font-size: 13px; 
+            font-weight: 800; 
+            transition: all 0.2s ease; 
+        }
+        .tips-icon-btn:hover { background: var(--accent-white); color: var(--accent-black); }
+
+        .note-popup { 
+            display: none; 
+            position: absolute; 
+            right: 0; 
+            top: 42px; 
+            background: rgba(25, 20, 22, 0.92); 
+            backdrop-filter: blur(24px); 
+            border: 1px solid var(--border-glass-light); 
+            border-radius: var(--radius-lg); 
+            padding: 16px 18px; 
+            width: 360px; 
+            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.7); 
+            z-index: 100; 
+            font-size: 12px; 
+            line-height: 1.7; 
+        }
+        .note-popup.show { display: block; }
+        .note-popup h4 { font-size: 11px; font-weight: 700; color: var(--accent-warm); text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px; margin-bottom: 10px; }
+        .note-popup ul { list-style: none; }
+        .note-popup li { margin-bottom: 6px; display: flex; align-items: flex-start; gap: 6px; color: var(--text-secondary); }
+        .note-popup li b { color: var(--text-primary); white-space: nowrap; }
+
+        #right-panel { 
+            width: 270px; 
+            background: rgba(20, 16, 18, 0.45);
+            backdrop-filter: blur(12px) saturate(130%);
+            -webkit-backdrop-filter: blur(12px) saturate(130%);
+            border-left: 1px solid var(--border-subtle); 
+            display: flex; 
+            flex-direction: column; 
+            flex-shrink: 0; 
+            z-index: 10; 
+            overflow: hidden; 
+            position: relative; 
+            box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.08);
+        }
+
+        .panel-header { 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            border-bottom: 1px solid var(--border-subtle); 
+            padding: 0 16px; 
+            height: 54px; 
+            background: transparent; 
+            z-index: 20; 
+        }
+        .panel-header h2 { font-size: 12px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.06em; margin: 0; }
+        .panel-header .zoom-info { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+        .panel-header button { width: auto; padding: 4px 10px; font-size: 10px; background: rgba(255, 255, 255, 0.1); color: var(--text-primary); border: 1px solid var(--border-glass); font-weight: 600; border-radius: var(--radius-pill); }
+        .panel-header button:hover { background: var(--accent-white); color: var(--accent-black); box-shadow: none; }
+
+        #palette-viewport { flex: 1; overflow: hidden; position: relative; background: transparent; cursor: default; }
+        #palette-viewport.panning { cursor: grabbing !important; }
+        #palette-pan-wrapper { position: absolute; top: 0; left: 0; width: 100%; transform-origin: 0 0; will-change: transform; }
+
+        #palette-container {
+            padding: 12px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            align-content: start;
+            --palette-scale: 1;
+        }
+
+        .palette-item { 
+            background: var(--card-glass); 
+            border: 1px solid var(--border-glass); 
+            border-radius: var(--radius-md); 
+            padding: 8px; 
+            cursor: grab; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            transition: all 0.2s ease; 
+            position: relative; 
+            user-select: none; 
+        }
+        .palette-item:hover { 
+            border-color: var(--accent-white); 
+            transform: translateY(-2px) scale(1.03); 
+            z-index: 10; 
+            background: rgba(255, 255, 255, 0.16); 
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4); 
+        }
+        .palette-img-box { width: 100%; height: calc(75px * var(--palette-scale)); min-height: 40px; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: var(--radius-sm); }
+        .palette-item img { object-fit: contain; width: 100%; height: 100%; pointer-events: none; }
+        .palette-item span { font-size: calc(10px * Math.max(0.8, var(--palette-scale))); color: var(--text-secondary); margin-top: 6px; text-align: center; word-break: break-all; pointer-events: none; font-weight: 500; }
+
+        /* 未載入圖檔時為 100% 完全透明，無任何模糊遮罩 */
+        #viewport { 
+            flex: 1; 
+            overflow: hidden; 
+            position: relative; 
+            cursor: default;
+            background: transparent;
+            transition: background-color 0.4s ease;
+        }
+
+        /* 載入圖檔後改用較不透明的底色取代 backdrop-filter 模糊（平移/縮放時每幀重算模糊很耗效能） */
+        #viewport.has-loaded-content {
+            background-color: rgba(20, 16, 18, 0.78);
+            background-image:
+                radial-gradient(circle at 50% 50%, rgba(200, 160, 140, 0.08) 0, rgba(0,0,0,0) 65%),
+                radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 0);
+            background-size: auto, 24px 24px;
+        }
+
+        #viewport.panning { cursor: grabbing !important; }
+        #viewport.item-dragging { cursor: move !important; }
+        #pan-wrapper { 
+            position: absolute; 
+            top: 50%; 
+            left: 50%; 
+            transform: translate3d(-50%, -50%, 0); 
+            transform-origin: 0 0; 
+            will-change: transform; 
+        }
+        #scale-wrapper { display: inline-block; transform-origin: center center; will-change: transform; }
+
+        #grid-container { display: grid; padding: 0; background: rgba(0, 0, 0, 0.25); border: 1px dashed var(--border-glass); border-radius: var(--radius-lg); }
+        .tile { 
+            position: relative; 
+            background: rgba(255, 255, 255, 0.04); 
+            border: 1px dashed rgba(255, 255, 255, 0.2); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            cursor: pointer; 
+            user-select: none; 
+            overflow: hidden; 
+            border-radius: var(--radius-md); 
+            box-sizing: border-box; 
+            transition: border-color 0.15s ease, box-shadow 0.15s ease; 
+            outline: none;
+        }
+        .tile:hover { border-color: var(--accent-white); background: rgba(255, 255, 255, 0.08); }
+        .tile.selected { border: 2px solid var(--accent-gold) !important; box-shadow: 0 0 0 4px var(--accent-gold-soft), 0 10px 25px rgba(226, 176, 103, 0.25); z-index: 5; background: rgba(226, 176, 103, 0.12); }
+        .tile.dragging { opacity: 0.3; border-color: var(--accent-white); }
+        .tile img { pointer-events: none; }
+        .tile:not(.alpha-mode):not(.autofit-mode) img { max-width: 100%; max-height: 100%; object-fit: contain; }
+        .tile .label { position: absolute; bottom: var(--offset-y, 10px); left: 50%; transform: translateX(-50%); font-size: var(--font-size, 12px); color: #fff; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9), 0 0 2px #000; pointer-events: none; white-space: nowrap; font-weight: 600; z-index: 10; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: var(--radius-pill); }
+
+        #folderTree { max-height: 220px; overflow: auto; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border-glass); border-radius: var(--radius-md); padding: 6px; font-size: 12px; user-select: none; }
+        #folderTree .tree-empty { color: var(--text-muted); padding: 8px 10px; }
+        .tree-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; cursor: pointer; white-space: nowrap; border-left: 3px solid transparent; border-radius: var(--radius-sm); min-width: max-content; transition: background 0.15s; }
+        .tree-row:hover { background: rgba(255, 255, 255, 0.08); }
+        .tree-row.selected { background: rgba(255, 255, 255, 0.15); border-left-color: var(--accent-white); color: var(--text-primary); font-weight: 600; }
+        .tree-row.empty { color: var(--text-muted); }
+        .tree-toggle { width: 14px; text-align: center; color: var(--text-muted); font-size: 10px; flex-shrink: 0; }
+        .tree-toggle:hover { color: var(--text-primary); }
+        .tree-name { color: var(--text-secondary); }
+        .tree-row.selected .tree-name { color: var(--text-primary); font-weight: 600; }
+        .tree-exclude { margin: 0 2px 0 0; cursor: pointer; accent-color: var(--danger-red); flex-shrink: 0; }
+        .tree-row.excluded .tree-name, .tree-row.excluded .tree-count { text-decoration: line-through; color: #6e6563; }
+        .tree-count { color: var(--text-muted); font-size: 11px; margin-left: 4px; }
+        #folderTreeHint { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+
+        label:has(input[type="checkbox"]), label:has(input[type="radio"]), .source-type-selector label, .tree-row .tree-name, .tree-row.selected .tree-name { color: var(--text-primary); }
+        #alert { color: var(--accent-gold); font-size: 11px; line-height: 1.4; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+<div id="app-body">
+    <!-- 左側面板 -->
+    <div id="sidebar">
+        <div class="app-title">
+            <span>圖層與圖檔排列匯出工具</span>
+            <span class="brand-badge">A Test</span>
+        </div>
+        
+        <div class="control-group">
+            <h3><span class="num-tag">01</span> 載入來源設定</h3>
+            <div class="source-type-selector">
+                <label><input type="radio" name="sourceType" value="psd" checked> PSD 檔案</label>
+                <label><input type="radio" name="sourceType" value="folder"> 圖片資料夾</label>
+            </div>
+            
+            <div id="psdInputContainer">
+                <input type="file" id="psdInput" accept=".psd" style="width:100%">
+            </div>
+            
+            <div id="folderInputContainer" style="display:none;">
+                <input type="file" id="folderInput" webkitdirectory directory multiple style="width:100%">
+                <div style="font-size:10px; color:var(--text-muted); margin-top:6px;">可選擇包含多個子資料夾的總目錄</div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">02</span> 選擇群組 / 分類</h3>
+            <input type="hidden" id="groupSelect" value="">
+            <div id="folderTree"><div class="tree-empty">請先載入檔案或資料夾</div></div>
+            <div id="folderTreeHint">點選任一資料夾（含最上層與子資料夾）；會顯示該資料夾底下所有圖層。<br>取消勾選＝排除該子資料夾圖層。</div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">03</span> 排列網格與模式</h3>
+            <div class="row-inputs">
+                <label>a (列): <input type="number" id="cols" value="3" min="1"></label>
+                <label>b (行): <input type="number" id="rows" value="3" min="1"></label>
+            </div>
+            <label style="margin-top:8px; font-weight:600;">
+                字母排版 (保留相對位置) 
+                <input type="checkbox" id="alphaLayout">
+            </label>
+            <label style="margin-top:6px; font-weight:600;">
+                不規則排列 (允許合併格子) 
+                <input type="checkbox" id="irregularLayout">
+            </label>
+            <label style="margin-top:6px; font-weight:600;">
+                照圖層/檔案名稱順序排列
+                <input type="checkbox" id="orderByName">
+            </label>
+
+            <!-- 圖片自動適應格子大小選項 -->
+            <label style="margin-top:8px; font-weight:600; border-top:1px dashed var(--border-subtle); padding-top:8px;">
+                圖片自動適應格子大小
+                <input type="checkbox" id="autoFitLayout">
+            </label>
+            <div id="autoFitModeContainer" style="display:none; margin-top:6px; padding:8px; background:rgba(0,0,0,0.3); border-radius:var(--radius-sm); border:1px solid var(--border-subtle);">
+                <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px; font-weight:600;">適應模式 (依圖尺寸判斷)：</div>
+                <label style="margin:4px 0; font-size:11px; cursor:pointer;">
+                    <input type="radio" name="autoFitMode" value="A" checked> Fit 模式
+                </label>
+                <label style="margin:4px 0; font-size:11px; cursor:pointer;">
+                    <input type="radio" name="autoFitMode" value="B"> Fill 模式
+                </label>
+            </div>
+
+            <div style="font-size:10px; color:var(--text-muted); margin-top:8px; line-height:1.5;">
+                開啟不規則排列後：按住 <b>Shift</b> 可多選格子，按下 <b>Enter</b> 可將選取格子合併。<br>
+                按 <b>Backspace</b> 解開合併。
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">04</span> 單格尺寸 (px)</h3>
+            <div class="row-inputs">
+                <label>寬: <input type="number" id="tileW" value="150"></label>
+                <label>高: <input type="number" id="tileH" value="150"></label>
+            </div>
+        </div>
+
+        <!-- 獨立圖像選取與縮放 / 位移控制項 -->
+        <div class="control-group" id="itemScaleGroup" style="border: 1px solid var(--border-glass-light); background: rgba(255, 255, 255, 0.08);">
+            <h3>選取圖片獨立縮放與位移</h3>
+            <div id="itemScaleControls" style="display:none; flex-direction:column; gap:8px;">
+                <label style="color:var(--text-primary);">縮放比例: <span id="itemScaleVal" style="color:var(--accent-gold); font-weight:700;">100%</span></label>
+                <input type="range" id="itemScaleSlider" min="10" max="500" value="100" step="5" style="width:100%;">
+                <div class="row-inputs">
+                    <label>數值(%): <input type="number" id="itemScaleNum" value="100" min="10" max="500"></label>
+                    <button id="btnResetItemScale" style="padding:4px 10px; font-size:11px;">重置100%</button>
+                </div>
+                
+                <div style="border-top: 1px dashed var(--border-subtle); margin-top: 6px; padding-top: 6px;">
+                    <div class="row-inputs">
+                        <label>位移 X (px): <input type="number" id="itemOffsetX" value="0"></label>
+                        <label>位移 Y (px): <input type="number" id="itemOffsetY" value="0"></label>
+                    </div>
+                    <button id="btnResetItemOffset" style="padding:4px 10px; font-size:11px; margin-top:6px;">重置位置 (0,0)</button>
+                </div>
+            </div>
+            <div id="itemScaleHint" style="font-size:11px; color:var(--text-secondary);">點擊畫布圖片可獨立縮放，按住 <b>Ctrl+中鍵拖曳</b> 可移動圖片中心點。</div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">05</span> 圖像間距 Gap (px)</h3>
+            <div class="row-inputs">
+                <label>水平間距: <input type="number" id="gapX" value="10" min="0"></label>
+                <label>垂直間距: <input type="number" id="gapY" value="10" min="0"></label>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">06</span> 圖層名稱顯示</h3>
+            <label>顯示名稱 <input type="checkbox" id="showLabel" checked></label>
+            <div class="row-inputs">
+                <label>字體大小: <input type="number" id="fontSize" value="12" min="8"></label>
+                <label>距底部: <input type="number" id="offsetY" value="8"></label>
+            </div>
+        </div>
+
+        <button id="btnRandom">隨機洗牌排列 (依目前模式)</button>
+        <button id="btnClearAll" class="clear-btn">移除所有圖只留下空格</button>
+
+        <div class="control-group" style="margin-top: 5px;">
+            <h3><span class="num-tag">07</span> 匯出拼接大圖</h3>
+            <label>格式: 
+                <select id="exportFormat" style="width:100px;">
+                    <option value="png">PNG</option>
+                    <option value="jpeg">JPG</option>
+                </select>
+            </label>
+            <label>背景類型: 
+                <select id="bgType" style="width:100px;">
+                    <option value="transparent">透明 (限PNG)</option>
+                    <option value="color">自訂顏色</option>
+                </select>
+            </label>
+            <label id="bgColorLabel" style="display:none;">背景顏色: 
+                <input type="color" id="bgColor" value="#ffffff">
+            </label>
+            <button id="btnExport" class="export-btn">匯出高畫質圖檔</button>
+        </div>
+        <div id="alert"></div>
+    </div>
+
+    <!-- 中央預覽區 -->
+    <div id="main">
+        <div id="toolbar">
+            <span>視角縮放:</span>
+            <input type="range" id="zoomSlider" min="1" max="200" value="100" step="1">
+            <span id="zoomVal" style="width: 50px; font-weight:700;">100%</span>
+            <button id="btnResetZoom" style="width: auto; font-size: 11px;">100% / 重置位置</button>
+            
+            <div class="tips-wrapper">
+                <div class="tips-icon-btn" id="btnToggleTips" title="點擊查看操作筆記">i</div>
+                <div class="note-popup" id="notePopup">
+                    <h4>操作快捷與說明筆記</h4>
+                    <ul>
+                        <li><b>點擊圖片：</b>選取該格（高亮顯示）。</li>
+                        <li><b>不規則模式：</b>勾選後按 Shift 多選格子，按 Enter 可合併格子。</li>
+                        <li><b>Backspace：</b>解開選取的合併格子。</li>
+                        <li><b>Delete：</b>點選圖片後按下可清空該格圖檔。</li>
+                        <li><b>Ctrl + 中鍵拖曳：</b>微調相對 XY 位移。</li>
+                        <li><b>Ctrl + 滾輪：</b>獨立縮放選取圖案。</li>
+                        <li><b>滾輪 / 中鍵拖曳：</b>平移與縮放畫布視角。</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div id="viewport">
+            <div id="pan-wrapper">
+                <div id="scale-wrapper">
+                    <div id="grid-container"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右側圖層庫 -->
+    <div id="right-panel">
+        <div class="panel-header">
+            <h2>當前庫內圖檔</h2>
+            <div class="zoom-info">
+                <span id="paletteZoomVal">100% (2列)</span>
+                <button id="btnResetPaletteZoom">重置</button>
+            </div>
+        </div>
+        <div id="palette-viewport">
+            <div id="palette-pan-wrapper">
+                <div id="palette-container"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentLoadedGroups = {};
+    let folderNodes = {};
+    let folderTreeRoot = null;
+    let excludedIds = new Set();
+    let currentItems = []; 
+    let gridData = [];
+    let currentMode = 'psd';
+    let psdCanvasWidth = 0;
+    let psdCanvasHeight = 0;
+    let selectedTileIndices = [];
+
+    let isItemDragging = false;
+    let dragItemTileIndex = null;
+    let itemDragStartX = 0, itemDragStartY = 0;
+    let initialOffsetX = 0, initialOffsetY = 0;
+
+    let rafPending = false;
+
+    const psdInput = document.getElementById('psdInput');
+    const folderInput = document.getElementById('folderInput');
+    const psdContainer = document.getElementById('psdInputContainer');
+    const folderContainer = document.getElementById('folderInputContainer');
+    const sourceTypeRadios = document.querySelectorAll('input[name="sourceType"]');
+
+    const groupSelect = document.getElementById('groupSelect');
+    const folderTreeEl = document.getElementById('folderTree');
+    const colsInput = document.getElementById('cols');
+    const rowsInput = document.getElementById('rows');
+    const tileWInput = document.getElementById('tileW');
+    const tileHInput = document.getElementById('tileH');
+    const gapXInput = document.getElementById('gapX');
+    const gapYInput = document.getElementById('gapY');
+    const showLabelCheck = document.getElementById('showLabel');
+    const fontSizeInput = document.getElementById('fontSize');
+    const offsetYInput = document.getElementById('offsetY');
+    const alphaLayoutCheck = document.getElementById('alphaLayout');
+    const irregularLayoutCheck = document.getElementById('irregularLayout');
+    const orderByNameCheck = document.getElementById('orderByName');
+    
+    const autoFitLayoutCheck = document.getElementById('autoFitLayout');
+    const autoFitModeContainer = document.getElementById('autoFitModeContainer');
+    const autoFitModeRadios = document.querySelectorAll('input[name="autoFitMode"]');
+
+    const itemScaleControls = document.getElementById('itemScaleControls');
+    const itemScaleHint = document.getElementById('itemScaleHint');
+    const itemScaleSlider = document.getElementById('itemScaleSlider');
+    const itemScaleNum = document.getElementById('itemScaleNum');
+    const itemScaleVal = document.getElementById('itemScaleVal');
+    const btnResetItemScale = document.getElementById('btnResetItemScale');
+    const itemOffsetX = document.getElementById('itemOffsetX');
+    const itemOffsetY = document.getElementById('itemOffsetY');
+    const btnResetItemOffset = document.getElementById('btnResetItemOffset');
+
+    const btnToggleTips = document.getElementById('btnToggleTips');
+    const notePopup = document.getElementById('notePopup');
+
+    const viewport = document.getElementById('viewport');
+    const panWrapper = document.getElementById('pan-wrapper');
+    const scaleWrapper = document.getElementById('scale-wrapper');
+    const gridContainer = document.getElementById('grid-container');
+    
+    const paletteViewport = document.getElementById('palette-viewport');
+    const palettePanWrapper = document.getElementById('palette-pan-wrapper');
+    const paletteContainer = document.getElementById('palette-container');
+    const paletteZoomVal = document.getElementById('paletteZoomVal');
+    const btnResetPaletteZoom = document.getElementById('btnResetPaletteZoom');
+
+    const alertDiv = document.getElementById('alert');
+    const zoomSlider = document.getElementById('zoomSlider');
+    const zoomVal = document.getElementById('zoomVal');
+    const btnResetZoom = document.getElementById('btnResetZoom');
+
+    const exportFormat = document.getElementById('exportFormat');
+    const bgType = document.getElementById('bgType');
+    const bgColorLabel = document.getElementById('bgColorLabel');
+    const bgColorInput = document.getElementById('bgColor');
+
+    let currentZoom = 100;
+    let panX = 0, panY = 0;
+    let isPanning = false;
+    let startX = 0, startY = 0;
+
+    let paletteZoom = 100;
+    let palettePanY = 0;
+    let isPalettePanning = false;
+    let paletteStartY = 0;
+
+    // 原始 PSD 檔（壓縮狀態）。圖層的全解析度 Canvas 不常駐記憶體，匯出時才從這裡重新解析
+    let psdBuffer = null;
+    const PSD_READ_OPTS = { skipCompositeImageData: true, skipThumbnail: true };
+
+    let thumbObjectUrls = [];
+    function releaseThumbs() {
+        thumbObjectUrls.forEach(u => URL.revokeObjectURL(u));
+        thumbObjectUrls = [];
+    }
+
+    function releaseCanvas(c) {
+        if (c) { c.width = 0; c.height = 0; }
+    }
+
+    // 將原尺寸來源（Image / Canvas）縮成 <=500px 的 UI 輕量縮圖。
+    // 用 toBlob + ObjectURL 取代 toDataURL：非同步編碼，也不會產生龐大的 base64 字串
+    async function createThumbnail(src, w, h, maxDim = 500) {
+        if (!src || !w || !h) return { url: '', canvas: null, width: 0, height: 0 };
+        const ratio = Math.min(1, maxDim / w, maxDim / h);
+        const thumbW = Math.max(1, Math.round(w * ratio));
+        const thumbH = Math.max(1, Math.round(h * ratio));
+
+        const thumbCanvas = document.createElement('canvas');
+        thumbCanvas.width = thumbW;
+        thumbCanvas.height = thumbH;
+        const ctx = thumbCanvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(src, 0, 0, thumbW, thumbH);
+
+        const blob = await new Promise(r => thumbCanvas.toBlob(r, 'image/png'));
+        let url;
+        if (blob) {
+            url = URL.createObjectURL(blob);
+            thumbObjectUrls.push(url);
+        } else {
+            url = thumbCanvas.toDataURL('image/png');
+        }
+        return { url, canvas: thumbCanvas, width: thumbW, height: thumbH };
+    }
+
+    // 匯出用：以與舊版相同的 Image → Canvas 流程取得全解析度來源，確保輸出像素一致
+    async function loadFullCanvas(file) {
+        const url = URL.createObjectURL(file);
+        try {
+            const img = new Image();
+            img.src = url;
+            await img.decode();
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            canvas.getContext('2d').drawImage(img, 0, 0);
+            return canvas;
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
+
+    function getPsdLayer(psd, path) {
+        let node = psd;
+        for (const i of path) node = node.children[i];
+        return node;
+    }
+
+    function getAutoFitScale(a, b, x, y, mode) {
+        if (!x || !y || !a || !b) return 1;
+        const n = a / x;
+        const m = b / y;
+        const cond = (y * n) > b;
+        
+        if (mode === 'A') {
+            return cond ? m : n;
+        } else {
+            return cond ? n : m;
+        }
+    }
+
+    autoFitLayoutCheck.addEventListener('change', () => {
+        autoFitModeContainer.style.display = autoFitLayoutCheck.checked ? 'block' : 'none';
+        requestRenderGrid();
+    });
+
+    autoFitModeRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+            requestRenderGrid();
+        });
+    });
+
+    btnToggleTips.addEventListener('click', (e) => {
+        e.stopPropagation();
+        notePopup.classList.toggle('show');
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.tips-wrapper')) {
+            notePopup.classList.remove('show');
+        }
+    });
+
+    sourceTypeRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            currentMode = e.target.value;
+            if (currentMode === 'psd') {
+                psdContainer.style.display = 'block';
+                folderContainer.style.display = 'none';
+            } else {
+                psdContainer.style.display = 'none';
+                folderContainer.style.display = 'block';
+            }
+            resetState();
+        });
+    });
+
+    function resetState() {
+        releaseThumbs();
+        psdBuffer = null;
+        currentLoadedGroups = {};
+        folderNodes = {};
+        folderTreeRoot = null;
+        excludedIds = new Set();
+        currentItems = [];
+        gridData = [];
+        selectedTileIndices = [];
+        groupSelect.value = '';
+        folderTreeEl.innerHTML = '<div class="tree-empty">請先載入檔案或資料夾</div>';
+        paletteContainer.innerHTML = '';
+        gridContainer.innerHTML = '';
+        alertDiv.innerText = '';
+        viewport.classList.remove('has-loaded-content');
+        updateItemScaleUI();
+    }
+
+    function updateTransform() {
+        zoomSlider.value = currentZoom;
+        zoomVal.innerText = currentZoom.toFixed(1) + '%';
+        scaleWrapper.style.transform = `scale(${currentZoom / 100})`;
+        panWrapper.style.transform = `translate3d(calc(-50% + ${panX}px), calc(-50% + ${panY}px), 0)`;
+    }
+
+    function updatePaletteTransform() {
+        let cols = 2;
+        if (paletteZoom > 140) cols = 1;
+        else if (paletteZoom < 70) cols = 3;
+
+        paletteZoomVal.innerText = `${Math.round(paletteZoom)}% (${cols}列)`;
+        paletteContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        paletteContainer.style.setProperty('--palette-scale', paletteZoom / 100);
+        palettePanWrapper.style.transform = `translate3d(0px, ${palettePanY}px, 0)`;
+    }
+
+    paletteViewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 10 : -10;
+        paletteZoom = Math.min(Math.max(40, paletteZoom + delta), 220);
+        updatePaletteTransform();
+    }, { passive: false });
+
+    paletteViewport.addEventListener('mousedown', (e) => {
+        if (e.button === 1) {
+            e.preventDefault();
+            isPalettePanning = true;
+            paletteStartY = e.clientY - palettePanY;
+            paletteViewport.classList.add('panning');
+        }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (isPanning) {
+            panX = e.clientX - startX;
+            panY = e.clientY - startY;
+            updateTransform();
+        }
+        if (isPalettePanning) {
+            palettePanY = e.clientY - paletteStartY;
+            updatePaletteTransform();
+        }
+        if (isItemDragging && dragItemTileIndex !== null) {
+            const zoomRatio = currentZoom / 100;
+            const dx = (e.clientX - itemDragStartX) / zoomRatio;
+            const dy = (e.clientY - itemDragStartY) / zoomRatio;
+            const cell = gridData[dragItemTileIndex];
+            if (cell && cell.item) {
+                cell.item.offsetX = Math.round(initialOffsetX + dx);
+                cell.item.offsetY = Math.round(initialOffsetY + dy);
+                itemOffsetX.value = cell.item.offsetX;
+                itemOffsetY.value = cell.item.offsetY;
+                updateTileImgs([dragItemTileIndex]);
+            }
+        }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+        if (e.button === 1) { 
+            if (isPanning) { isPanning = false; viewport.classList.remove('panning'); }
+            if (isPalettePanning) { isPalettePanning = false; paletteViewport.classList.remove('panning'); }
+            if (isItemDragging) {
+                isItemDragging = false;
+                viewport.classList.remove('item-dragging');
+                requestRenderGrid();
+            }
+        }
+    });
+
+    window.addEventListener('keydown', (e) => {
+        if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+
+        if (e.key === 'Enter' && irregularLayoutCheck.checked && selectedTileIndices.length > 1) {
+            e.preventDefault();
+            mergeSelectedTiles();
+        } else if (e.key === 'Backspace' && selectedTileIndices.length > 0) {
+            e.preventDefault();
+            unmergeAndFillTiles();
+        } else if (e.key === 'Delete' && selectedTileIndices.length > 0) {
+            e.preventDefault();
+            selectedTileIndices.forEach(idx => {
+                if (gridData[idx]) gridData[idx].item = null;
+            });
+            requestRenderGrid();
+        }
+    });
+
+    viewport.addEventListener('click', (e) => {
+        if (!e.target.closest('.tile')) {
+            selectedTileIndices = [];
+            updateTileSelection();
+            updateItemScaleUI();
+        }
+    });
+
+    btnResetPaletteZoom.addEventListener('click', () => {
+        paletteZoom = 100; palettePanY = 0; updatePaletteTransform();
+    });
+
+    zoomSlider.addEventListener('input', (e) => { currentZoom = parseFloat(e.target.value); updateTransform(); });
+    btnResetZoom.addEventListener('click', () => { currentZoom = 100; panX = 0; panY = 0; updateTransform(); });
+
+    viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        
+        if (e.ctrlKey && selectedTileIndices.length > 0) {
+            const primaryIdx = selectedTileIndices[0];
+            const cell = gridData[primaryIdx];
+            if (cell && cell.item) {
+                let currentScale = (cell.item.scale || 1.0) * 100;
+                const delta = e.deltaY < 0 ? 5 : -5;
+                currentScale = Math.min(Math.max(10, currentScale + delta), 500);
+                cell.item.scale = currentScale / 100;
+                
+                updateItemScaleUI();
+                updateTileImgs([primaryIdx]);
+                return;
+            }
+        }
+
+        const delta = e.deltaY < 0 ? 2.5 : -2.5;
+        currentZoom = Math.min(Math.max(1, currentZoom + delta), 200);
+        updateTransform();
+    }, { passive: false });
+
+    viewport.addEventListener('mousedown', (e) => {
+        if (e.button === 1) {
+            const tile = e.target.closest('.tile');
+            if (e.ctrlKey && tile) {
+                const tileIdx = parseInt(tile.dataset.index);
+                const cell = gridData[tileIdx];
+                if (cell && cell.item) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    isItemDragging = true;
+                    dragItemTileIndex = tileIdx;
+                    itemDragStartX = e.clientX;
+                    itemDragStartY = e.clientY;
+                    initialOffsetX = cell.item.offsetX || 0;
+                    initialOffsetY = cell.item.offsetY || 0;
+                    
+                    if (!selectedTileIndices.includes(tileIdx)) {
+                        selectedTileIndices = [tileIdx];
+                        updateTileSelection();
+                        updateItemScaleUI();
+                    }
+                    viewport.classList.add('item-dragging');
+                    return;
+                }
+            }
+
+            e.preventDefault();
+            isPanning = true;
+            startX = e.clientX - panX;
+            startY = e.clientY - panY;
+            viewport.classList.add('panning');
+        }
+    });
+
+    exportFormat.addEventListener('change', updateBgOptionVisibility);
+    bgType.addEventListener('change', updateBgOptionVisibility);
+
+    function updateBgOptionVisibility() {
+        if (exportFormat.value === 'jpeg') {
+            bgType.value = 'color'; bgType.disabled = true; bgColorLabel.style.display = 'flex';
+        } else {
+            bgType.disabled = false; bgColorLabel.style.display = (bgType.value === 'color') ? 'flex' : 'none';
+        }
+    }
+
+    psdInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        alertDiv.innerText = "⏳ 解析 PSD 與產生輕量預覽圖檔中...";
+        // 給予微小延遲讓畫面顯示提示訊息
+        await new Promise(r => setTimeout(r, 20));
+
+        const buffer = await file.arrayBuffer();
+        const psd = agPsd.readPsd(buffer, PSD_READ_OPTS);
+
+        releaseThumbs();
+        psdBuffer = buffer;
+        psdCanvasWidth = psd.width;
+        psdCanvasHeight = psd.height;
+        currentLoadedGroups = {};
+        folderNodes = {};
+        nodeIdCounter = 0;
+
+        // path：圖層在 PSD 樹中的 children 索引路徑，匯出時用來從 psdBuffer 重新找回原始圖層
+        async function buildPsdNode(psdNode, name, path) {
+            const node = createFolderNode(name);
+            const children = psdNode.children || [];
+            for (let i = children.length - 1; i >= 0; i--) {
+                const child = children[i];
+                const childPath = path.concat(i);
+                if (child.children) {
+                    const sub = await buildPsdNode(child, child.name || '(未命名資料夾)', childPath);
+                    node.children.push(sub);
+                    node.items.push(...sub.items);
+                } else if (child.canvas) {
+                    const w = child.canvas.width, h = child.canvas.height;
+                    const thumb = await createThumbnail(child.canvas, w, h, 500);
+
+                    node.items.push({
+                        isPsd: true,
+                        name: child.name,
+                        psdPath: childPath,
+                        thumbUrl: thumb.url,       // UI 顯示用輕量 URL
+                        thumbCanvas: thumb.canvas, // 拖曳殘影用小圖
+                        thumbW: thumb.width,
+                        thumbH: thumb.height,
+                        left: child.left,
+                        top: child.top,
+                        width: w,
+                        height: h,
+                        scale: 1.0,
+                        offsetX: 0,
+                        offsetY: 0
+                    });
+
+                    // 原始大圖不常駐記憶體
+                    releaseCanvas(child.canvas);
+                    child.canvas = null;
+                }
+            }
+            return node;
+        }
+
+        const rootNode = await buildPsdNode(psd, 'PSD 根目錄', []);
+        populateFolderTree(rootNode);
+    });
+
+    folderInput.addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+
+        alertDiv.innerText = "⏳ 讀取圖片並最佳化快取中...";
+        await new Promise(r => setTimeout(r, 20));
+
+        releaseThumbs();
+        psdBuffer = null;
+        currentLoadedGroups = {};
+        folderNodes = {};
+        nodeIdCounter = 0;
+        const dirMap = {};
+        let folderRoot = null;
+
+        function getDirNode(dirParts) {
+            const key = dirParts.join('/');
+            if (dirMap[key]) return dirMap[key];
+            const node = createFolderNode(dirParts[dirParts.length - 1]);
+            dirMap[key] = node;
+            if (dirParts.length === 1) {
+                if (!folderRoot) folderRoot = node;
+            } else {
+                getDirNode(dirParts.slice(0, -1)).children.push(node);
+            }
+            return node;
+        }
+
+        const imageFiles = files.filter(f => f.type.startsWith('image/'));
+
+        // 限制同時解碼的數量，避免一次把所有原圖解碼進記憶體
+        const CONCURRENCY = 4;
+        let nextIndex = 0;
+        async function worker() {
+            while (nextIndex < imageFiles.length) {
+                const file = imageFiles[nextIndex++];
+                const url = URL.createObjectURL(file);
+                const img = new Image();
+                img.src = url;
+                try {
+                    await img.decode();
+                } catch (err) {
+                    URL.revokeObjectURL(url);
+                    continue;
+                }
+                const thumb = await createThumbnail(img, img.width, img.height, 500);
+                URL.revokeObjectURL(url);
+
+                const relativePath = file.webkitRelativePath || file.name;
+                const pathParts = relativePath.split('/');
+
+                let dirParts = pathParts.slice(0, -1);
+                if (dirParts.length === 0) dirParts = ['[根目錄圖片]'];
+
+                const cleanName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+
+                const newItem = {
+                    isPsd: false,
+                    name: cleanName,
+                    pathParts: pathParts,
+                    file: file,                // 原始檔（壓縮狀態），匯出時才解碼
+                    thumbUrl: thumb.url,
+                    thumbCanvas: thumb.canvas, // 拖曳殘影用小圖
+                    thumbW: thumb.width,
+                    thumbH: thumb.height,
+                    width: img.width,
+                    height: img.height,
+                    scale: 1.0,
+                    offsetX: 0,
+                    offsetY: 0
+                };
+
+                for (let i = 1; i <= dirParts.length; i++) {
+                    getDirNode(dirParts.slice(0, i)).items.push(newItem);
+                }
+            }
+        }
+
+        await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+        Object.values(dirMap).forEach(node => {
+            node.items.sort(comparePathOrder);
+            node.children.sort((x, y) =>
+                x.name.localeCompare(y.name, undefined, { numeric: true, sensitivity: 'base' })
+            );
+        });
+
+        populateFolderTree(folderRoot);
+    });
+
+    function comparePathOrder(a, b) {
+        const pa = a.pathParts || [a.name], pb = b.pathParts || [b.name];
+        const n = Math.min(pa.length, pb.length);
+        for (let i = 0; i < n; i++) {
+            const aIsFile = i === pa.length - 1, bIsFile = i === pb.length - 1;
+            if (aIsFile !== bIsFile) return aIsFile ? -1 : 1;
+            const c = pa[i].localeCompare(pb[i], undefined, { numeric: true, sensitivity: 'base' });
+            if (c !== 0) return c;
+        }
+        return pa.length - pb.length;
+    }
+
+    let nodeIdCounter = 0;
+
+    function createFolderNode(name) {
+        const node = { id: 'f' + (nodeIdCounter++), name: name, children: [], items: [], expanded: true };
+        folderNodes[node.id] = node;
+        return node;
+    }
+
+    function populateFolderTree(rootNode) {
+        currentLoadedGroups = {};
+        folderTreeRoot = rootNode;
+
+        if (!rootNode || rootNode.items.length === 0) {
+            folderTreeEl.innerHTML = '<div class="tree-empty">找不到可用的圖層或圖片</div>';
+            groupSelect.value = '';
+            alertDiv.innerText = "❌ 找不到可用的圖層或圖片！";
+            viewport.classList.remove('has-loaded-content');
+            return;
+        }
+
+        Object.values(folderNodes).forEach(n => { currentLoadedGroups[n.id] = n.items; });
+
+        let defaultNode = rootNode;
+        (function findFirst(node) {
+            for (const c of node.children) {
+                if (defaultNode !== rootNode) return;
+                if (c.items.length > 0) { defaultNode = c; return; }
+                findFirst(c);
+            }
+        })(rootNode);
+
+        alertDiv.innerText = '';
+        excludedIds = new Set();
+        groupSelect.value = defaultNode.id;
+        renderFolderTree();
+
+        panX = 0; panY = 0; palettePanY = 0; selectedTileIndices = [];
+        updateGridData();
+    }
+
+    function renderFolderTree() {
+        folderTreeEl.innerHTML = '';
+        if (!folderTreeRoot) return;
+
+        const selectedId = groupSelect.value;
+
+        function renderNode(node, depth, insideSelected, ancestorExcluded) {
+            const isSelected = node.id === selectedId;
+            const isExcluded = excludedIds.has(node.id) || ancestorExcluded;
+            const showCheck = insideSelected && !isSelected;
+
+            const row = document.createElement('div');
+            row.className = 'tree-row' + (isSelected ? ' selected' : '') + (node.items.length === 0 ? ' empty' : '') + (showCheck && isExcluded ? ' excluded' : '');
+            row.style.paddingLeft = (6 + depth * 16) + 'px';
+            row.dataset.id = node.id;
+
+            const toggle = document.createElement('span');
+            toggle.className = 'tree-toggle';
+            toggle.innerText = node.children.length ? (node.expanded ? '▼' : '▶') : '';
+            toggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                node.expanded = !node.expanded;
+                renderFolderTree();
+            });
+            row.appendChild(toggle);
+
+            if (showCheck) {
+                const chk = document.createElement('input');
+                chk.type = 'checkbox';
+                chk.className = 'tree-exclude';
+                chk.title = '勾選＝納入此資料夾的圖層；取消勾選＝排除';
+                chk.checked = !isExcluded;
+                chk.disabled = ancestorExcluded;
+                chk.addEventListener('click', (e) => e.stopPropagation());
+                chk.addEventListener('change', () => {
+                    if (chk.checked) excludedIds.delete(node.id); else excludedIds.add(node.id);
+                    selectedTileIndices = [];
+                    renderFolderTree();
+                    updateGridData();
+                });
+                row.appendChild(chk);
+            }
+
+            const name = document.createElement('span');
+            name.className = 'tree-name';
+            name.innerText = node.name;
+
+            const count = document.createElement('span');
+            count.className = 'tree-count';
+            const shown = isSelected ? (currentLoadedGroups[node.id] || node.items).length : node.items.length;
+            count.innerText = `(${shown})`;
+
+            row.append(name, count);
+            row.addEventListener('click', () => selectFolder(node.id));
+            row.addEventListener('dblclick', () => {
+                if (node.children.length) { node.expanded = !node.expanded; renderFolderTree(); }
+            });
+            folderTreeEl.appendChild(row);
+
+            if (node.expanded) {
+                node.children.forEach(c => renderNode(c, depth + 1, insideSelected || isSelected, isExcluded && showCheck));
+            }
+        }
+
+        renderNode(folderTreeRoot, 0, false, false);
+    }
+
+    function selectFolder(id) {
+        const node = folderNodes[id];
+        if (!node) return;
+        if (node.items.length === 0) {
+            alertDiv.innerText = "⚠️ 此資料夾底下沒有任何圖層。";
+            return;
+        }
+        alertDiv.innerText = '';
+        groupSelect.value = id;
+        excludedIds = new Set();
+        selectedTileIndices = [];
+        renderFolderTree();
+        updateGridData();
+    }
+
+    [colsInput, rowsInput, tileWInput, tileHInput, gapXInput, gapYInput, showLabelCheck, fontSizeInput, offsetYInput, alphaLayoutCheck, irregularLayoutCheck].forEach(el => {
+        el.addEventListener('input', () => {
+            if (el === colsInput || el === rowsInput) {
+                syncGridDataSize();
+            }
+            requestRenderGrid();
+        });
+    });
+
+    itemScaleSlider.addEventListener('input', (e) => applyItemScale(parseFloat(e.target.value)));
+    itemScaleNum.addEventListener('input', (e) => applyItemScale(parseFloat(e.target.value) || 100));
+    btnResetItemScale.addEventListener('click', () => applyItemScale(100));
+
+    itemOffsetX.addEventListener('input', applyItemOffset);
+    itemOffsetY.addEventListener('input', applyItemOffset);
+    btnResetItemOffset.addEventListener('click', () => {
+        itemOffsetX.value = 0;
+        itemOffsetY.value = 0;
+        applyItemOffset();
+    });
+
+    function applyItemScale(val) {
+        val = Math.min(Math.max(10, val), 500);
+        if (selectedTileIndices.length > 0) {
+            selectedTileIndices.forEach(idx => {
+                if (gridData[idx] && gridData[idx].item) gridData[idx].item.scale = val / 100;
+            });
+            updateItemScaleUI();
+            updateTileImgs(selectedTileIndices);
+        }
+    }
+
+    function applyItemOffset() {
+        if (selectedTileIndices.length > 0) {
+            const ox = parseFloat(itemOffsetX.value) || 0;
+            const oy = parseFloat(itemOffsetY.value) || 0;
+            selectedTileIndices.forEach(idx => {
+                if (gridData[idx] && gridData[idx].item) {
+                    gridData[idx].item.offsetX = ox;
+                    gridData[idx].item.offsetY = oy;
+                }
+            });
+            updateTileImgs(selectedTileIndices);
+        }
+    }
+
+    function updateItemScaleUI() {
+        if (selectedTileIndices.length > 0) {
+            const primaryIdx = selectedTileIndices[0];
+            const cell = gridData[primaryIdx];
+            if (cell && cell.item) {
+                const currentScale = Math.round((cell.item.scale || 1.0) * 100);
+                itemScaleControls.style.display = 'flex';
+                itemScaleHint.style.display = 'none';
+                itemScaleVal.innerText = currentScale + '%';
+                itemScaleSlider.value = currentScale;
+                itemScaleNum.value = currentScale;
+                itemOffsetX.value = cell.item.offsetX || 0;
+                itemOffsetY.value = cell.item.offsetY || 0;
+                return;
+            }
+        }
+        itemScaleControls.style.display = 'none';
+        itemScaleHint.style.display = 'block';
+    }
+
+    function syncGridDataSize() {
+        const cols = parseInt(colsInput.value) || 1;
+        const rows = parseInt(rowsInput.value) || 1;
+        const total = cols * rows;
+
+        const newGridData = [];
+        for (let i = 0; i < total; i++) {
+            if (gridData[i]) {
+                newGridData.push(gridData[i]);
+            } else {
+                newGridData.push({
+                    item: currentItems[i] || null,
+                    colSpan: 1,
+                    rowSpan: 1,
+                    isCovered: false,
+                    masterIndex: null
+                });
+            }
+        }
+        gridData = newGridData;
+    }
+
+    function refreshCurrentGroup() {
+        const id = groupSelect.value;
+        const node = folderNodes[id];
+        if (!node) return;
+
+        const skip = new Set();
+        (function walk(n) {
+            n.children.forEach(c => {
+                if (excludedIds.has(c.id)) c.items.forEach(i => skip.add(i));
+                else walk(c);
+            });
+        })(node);
+
+        let items = node.items.filter(i => !skip.has(i));
+        if (orderByNameCheck.checked && currentMode === 'folder') {
+            items = items.slice().sort(comparePathOrder);
+        }
+        currentLoadedGroups[id] = items;
+    }
+
+    orderByNameCheck.addEventListener('change', () => {
+        selectedTileIndices = [];
+        updateGridData();
+    });
+
+    function updateGridData() {
+        refreshCurrentGroup();
+        renderFolderTree();
+        const groupName = groupSelect.value;
+        if (!groupName || !currentLoadedGroups[groupName]) {
+            viewport.classList.remove('has-loaded-content');
+            return;
+        }
+
+        if (currentLoadedGroups[groupName].length === 0) {
+            alertDiv.innerText = "⚠️️ 目前沒有可用的圖層（可能全部子資料夾都被排除了）。";
+            viewport.classList.remove('has-loaded-content');
+        } else {
+            if (alertDiv.innerText.startsWith("⚠️️ 目前沒有")) {
+                alertDiv.innerText = '';
+            }
+            viewport.classList.add('has-loaded-content');
+        }
+        
+        currentItems = currentLoadedGroups[groupName].map(item => ({ ...item, scale: 1.0, offsetX: 0, offsetY: 0 }));
+        renderPalette(currentItems);
+
+        let groupMaxW = 0, groupMaxH = 0;
+        currentItems.forEach(item => {
+            if (item) {
+                groupMaxW = Math.max(groupMaxW, item.width);
+                groupMaxH = Math.max(groupMaxH, item.height);
+            }
+        });
+
+        if (groupMaxW > 0 && groupMaxH > 0) {
+            tileWInput.value = groupMaxW;
+            tileHInput.value = groupMaxH;
+        }
+
+        if (!orderByNameCheck.checked) shuffleArray(currentItems);
+        
+        const cols = parseInt(colsInput.value) || 1;
+        const rows = parseInt(rowsInput.value) || 1;
+        gridData = [];
+        for (let i = 0; i < cols * rows; i++) {
+            gridData.push({
+                item: currentItems[i] || null,
+                colSpan: 1,
+                rowSpan: 1,
+                isCovered: false,
+                masterIndex: null
+            });
+        }
+
+        requestRenderGrid();
+    }
+
+    function renderPalette(sourceItems) {
+        paletteContainer.innerHTML = '';
+        sourceItems.forEach((item, idx) => {
+            const div = document.createElement('div');
+            div.className = 'palette-item';
+            div.draggable = true;
+            
+            const imgBox = document.createElement('div');
+            imgBox.className = 'palette-img-box';
+
+            const img = document.createElement('img');
+            img.src = item.thumbUrl || item.url;
+            imgBox.appendChild(img);
+
+            const label = document.createElement('span');
+            label.innerText = item.name;
+            
+            div.appendChild(imgBox);
+            div.appendChild(label);
+            
+            div.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/palette-index', idx);
+                e.dataTransfer.effectAllowed = 'copy';
+            });
+            paletteContainer.appendChild(div);
+        });
+    }
+
+    document.getElementById('btnRandom').addEventListener('click', () => {
+        const groupName = groupSelect.value;
+        const sourceItems = currentLoadedGroups[groupName];
+        if (!sourceItems) return;
+
+        const cols = parseInt(colsInput.value) || 1;
+        const rows = parseInt(rowsInput.value) || 1;
+        const totalNeeded = cols * rows;
+
+        gridData.forEach(cell => {
+            cell.colSpan = 1; cell.rowSpan = 1; cell.isCovered = false; cell.masterIndex = null;
+        });
+
+        if (alphaLayoutCheck.checked) {
+            for (let i = 0; i < totalNeeded; i++) {
+                if (sourceItems.length === 0) { gridData[i].item = null; continue; }
+                const idx = orderByNameCheck.checked ? (i % sourceItems.length) : Math.floor(Math.random() * sourceItems.length);
+                gridData[i].item = { ...sourceItems[idx], scale: 1.0, offsetX: 0, offsetY: 0 };
+            }
+        } else {
+            const shuffled = sourceItems.map(src => ({ ...src, scale: 1.0, offsetX: 0, offsetY: 0 }));
+            if (!orderByNameCheck.checked) shuffleArray(shuffled);
+            for (let i = 0; i < totalNeeded; i++) {
+                gridData[i].item = shuffled[i] || null;
+            }
+        }
+        selectedTileIndices = [];
+        updateItemScaleUI();
+        requestRenderGrid();
+    });
+
+    document.getElementById('btnClearAll').addEventListener('click', () => {
+        gridData.forEach(cell => {
+            cell.item = null; cell.colSpan = 1; cell.rowSpan = 1; cell.isCovered = false; cell.masterIndex = null;
+        });
+        selectedTileIndices = [];
+        updateItemScaleUI();
+        requestRenderGrid();
+    });
+
+    function shuffleArray(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+    }
+
+    function mergeSelectedTiles() {
+        if (selectedTileIndices.length <= 1) return;
+
+        const cols = parseInt(colsInput.value) || 1;
+        let minR = Infinity, maxR = -1, minC = Infinity, maxC = -1;
+
+        selectedTileIndices.forEach(idx => {
+            const r = Math.floor(idx / cols);
+            const c = idx % cols;
+            if (r < minR) minR = r;
+            if (r > maxR) maxR = r;
+            if (c < minC) minC = c;
+            if (c > maxC) maxC = c;
+        });
+
+        const masterIdx = minR * cols + minC;
+        const colSpan = maxC - minC + 1;
+        const rowSpan = maxR - minR + 1;
+
+        const boxIndices = [];
+        for (let r = minR; r <= maxR; r++) {
+            for (let c = minC; c <= maxC; c++) {
+                boxIndices.push(r * cols + c);
+            }
+        }
+
+        let masterItem = null;
+        let ejectedItems = [];
+
+        boxIndices.forEach(idx => {
+            const cell = gridData[idx];
+            if (cell && cell.item) {
+                if (!masterItem) {
+                    masterItem = cell.item;
+                } else {
+                    ejectedItems.push(cell.item);
+                }
+            }
+        });
+
+        boxIndices.forEach(idx => {
+            if (idx === masterIdx) {
+                gridData[idx] = {
+                    item: masterItem,
+                    colSpan: colSpan,
+                    rowSpan: rowSpan,
+                    isCovered: false,
+                    masterIndex: null
+                };
+            } else {
+                gridData[idx] = {
+                    item: null,
+                    colSpan: 1,
+                    rowSpan: 1,
+                    isCovered: true,
+                    masterIndex: masterIdx
+                };
+            }
+        });
+
+        if (ejectedItems.length > 0) {
+            for (let i = 0; i < gridData.length; i++) {
+                if (ejectedItems.length === 0) break;
+                const cell = gridData[i];
+                if (!cell.isCovered && cell.item === null) {
+                    cell.item = ejectedItems.shift();
+                }
+            }
+        }
+
+        selectedTileIndices = [masterIdx];
+        updateItemScaleUI();
+        requestRenderGrid();
+    }
+
+    function unmergeAndFillTiles() {
+        const cols = parseInt(colsInput.value) || 1;
+        let touched = false;
+
+        selectedTileIndices.forEach(idx => {
+            const cell = gridData[idx];
+            if (!cell) return;
+
+            let masterIdx = idx;
+            if (cell.isCovered) {
+                masterIdx = cell.masterIndex;
+            }
+            const masterCell = gridData[masterIdx];
+
+            if (masterCell && (masterCell.colSpan > 1 || masterCell.rowSpan > 1)) {
+                touched = true;
+                const mR = Math.floor(masterIdx / cols);
+                const mC = masterIdx % cols;
+                const origItem = masterCell.item;
+
+                const newlyFreedIndices = [];
+                for (let r = mR; r < mR + masterCell.rowSpan; r++) {
+                    for (let c = mC; c < mC + masterCell.colSpan; c++) {
+                        const childIdx = r * cols + c;
+                        if (childIdx !== masterIdx) {
+                            newlyFreedIndices.push(childIdx);
+                        }
+                    }
+                }
+
+                gridData[masterIdx] = {
+                    item: origItem,
+                    colSpan: 1,
+                    rowSpan: 1,
+                    isCovered: false,
+                    masterIndex: null
+                };
+
+                newlyFreedIndices.forEach(fIdx => {
+                    gridData[fIdx] = {
+                        item: null,
+                        colSpan: 1,
+                        rowSpan: 1,
+                        isCovered: false,
+                        masterIndex: null
+                    };
+                });
+
+                newlyFreedIndices.forEach(targetIdx => {
+                    for (let i = gridData.length - 1; i >= 0; i--) {
+                        if (i !== targetIdx && !gridData[i].isCovered && gridData[i].item !== null) {
+                            gridData[targetIdx].item = gridData[i].item;
+                            gridData[i].item = null;
+                            break;
+                        }
+                    }
+                });
+            }
+        });
+
+        if (touched) {
+            requestRenderGrid();
+            updateItemScaleUI();
+        }
+    }
+
+    function updateTileSelection() {
+        const tiles = gridContainer.querySelectorAll('.tile');
+        tiles.forEach((tile) => {
+            const idx = parseInt(tile.dataset.index);
+            if (selectedTileIndices.includes(idx)) {
+                tile.classList.add('selected');
+            } else {
+                tile.classList.remove('selected');
+            }
+        });
+    }
+
+    function requestRenderGrid() {
+        if (!rafPending) {
+            rafPending = true;
+            requestAnimationFrame(() => {
+                renderGrid();
+                rafPending = false;
+            });
+        }
+    }
+
+    // 設定格子內 img 的位置/大小/變形。使用 2D translate 而非 translate3d，避免每張圖被提升成獨立 GPU 圖層
+    function applyImgLayout(img, item, mergedW, mergedH, isAutoFit, isAlphaLayout, autoFitMode) {
+        const scale = item.scale || 1.0;
+        const ox = item.offsetX || 0;
+        const oy = item.offsetY || 0;
+
+        if (isAutoFit) {
+            const autoScale = getAutoFitScale(mergedW, mergedH, item.width, item.height, autoFitMode);
+            const renderW = item.width * autoScale;
+            const renderH = item.height * autoScale;
+
+            img.style.position = 'absolute';
+            img.style.width = renderW + 'px';
+            img.style.height = renderH + 'px';
+
+            if (isAlphaLayout && item.isPsd) {
+                const layerCenterX = item.left + (item.width / 2);
+                const layerCenterY = item.top + (item.height / 2);
+                const dx = layerCenterX - (psdCanvasWidth / 2);
+                const dy = layerCenterY - (psdCanvasHeight / 2);
+                img.style.left = ((mergedW / 2) + dx - (renderW / 2)) + 'px';
+                img.style.top = ((mergedH / 2) + dy - (renderH / 2)) + 'px';
+            } else {
+                img.style.left = ((mergedW - renderW) / 2) + 'px';
+                img.style.top = ((mergedH - renderH) / 2) + 'px';
+            }
+            img.style.transform = `translate(${ox}px, ${oy}px) scale(${scale})`;
+        } else if (isAlphaLayout) {
+            img.style.position = 'absolute';
+            if (item.isPsd) {
+                const layerCenterX = item.left + (item.width / 2);
+                const layerCenterY = item.top + (item.height / 2);
+                const dx = layerCenterX - (psdCanvasWidth / 2);
+                const dy = layerCenterY - (psdCanvasHeight / 2);
+
+                img.style.left = ((mergedW / 2) + dx - (item.width / 2) + ox) + 'px';
+                img.style.top = ((mergedH / 2) + dy - (item.height / 2) + oy) + 'px';
+                img.style.width = item.width + 'px';
+                img.style.height = item.height + 'px';
+            } else {
+                img.style.left = ((mergedW - item.width) / 2 + ox) + 'px';
+                img.style.top = ((mergedH - item.height) / 2 + oy) + 'px';
+                img.style.width = item.width + 'px';
+                img.style.height = item.height + 'px';
+            }
+            img.style.transform = `scale(${scale})`;
+        } else {
+            /* 強制還原顯示寬高為原始圖層的真實邏輯尺寸 (如 2500x2100px) */
+            img.style.width = item.width + 'px';
+            img.style.height = item.height + 'px';
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '100%';
+            img.style.objectFit = 'contain';
+            img.style.transform = `translate(${ox}px, ${oy}px) scale(${scale})`;
+        }
+    }
+
+    // 只更新指定格子的 img，不重建整個格子 DOM（拖動縮放/位移時使用）
+    function updateTileImgs(indices) {
+        if (rafPending) return; // 已排程整體重繪，交給它處理
+        const isAutoFit = autoFitLayoutCheck.checked;
+        const isAlphaLayout = alphaLayoutCheck.checked;
+        const autoFitMode = document.querySelector('input[name="autoFitMode"]:checked')?.value || 'A';
+        indices.forEach(idx => {
+            const cell = gridData[idx];
+            if (!cell || !cell.item) return;
+            const tile = gridContainer.querySelector(`.tile[data-index="${idx}"]`);
+            const img = tile && tile.querySelector('img');
+            if (!img) return;
+            applyImgLayout(img, cell.item, parseFloat(tile.style.width), parseFloat(tile.style.height), isAutoFit, isAlphaLayout, autoFitMode);
+        });
+    }
+
+    function renderGrid() {
+        const cols = parseInt(colsInput.value) || 1;
+        const rows = parseInt(rowsInput.value) || 1;
+        const tileW = parseInt(tileWInput.value) || 100;
+        const tileH = parseInt(tileHInput.value) || 100;
+        const gapX = parseInt(gapXInput.value) || 0;
+        const gapY = parseInt(gapYInput.value) || 0;
+        const totalNeeded = cols * rows;
+        const isAlphaLayout = alphaLayoutCheck.checked;
+        const isAutoFit = autoFitLayoutCheck.checked;
+        const autoFitMode = document.querySelector('input[name="autoFitMode"]:checked')?.value || 'A';
+
+        if (gridData.length !== totalNeeded) {
+            syncGridDataSize();
+        }
+
+        gridContainer.style.gridTemplateColumns = `repeat(${cols}, ${tileW}px)`;
+        gridContainer.style.gridTemplateRows = `repeat(${rows}, ${tileH}px)`;
+        gridContainer.style.columnGap = gapX + 'px';
+        gridContainer.style.rowGap = gapY + 'px';
+        gridContainer.innerHTML = '';
+
+        for (let i = 0; i < totalNeeded; i++) {
+            const cell = gridData[i];
+            if (!cell || cell.isCovered) continue;
+
+            const tile = document.createElement('div');
+            tile.className = 'tile';
+            if (selectedTileIndices.includes(i)) tile.classList.add('selected');
+            if (isAlphaLayout) tile.classList.add('alpha-mode');
+            if (isAutoFit) tile.classList.add('autofit-mode');
+            
+            const r = Math.floor(i / cols);
+            const c = i % cols;
+            tile.style.gridColumn = `${c + 1} / span ${cell.colSpan}`;
+            tile.style.gridRow = `${r + 1} / span ${cell.rowSpan}`;
+
+            const mergedW = cell.colSpan * tileW + (cell.colSpan - 1) * gapX;
+            const mergedH = cell.rowSpan * tileH + (cell.rowSpan - 1) * gapY;
+            tile.style.width = mergedW + 'px';
+            tile.style.height = mergedH + 'px';
+
+            tile.dataset.index = i;
+            tile.draggable = true;
+
+            const item = cell.item;
+            if (item) {
+                const img = document.createElement('img');
+                // 核心優化：畫面預覽直接掛載輕量化的 ThumbURL，避免 GPU 重複載入龐大原尺寸 Texture
+                img.src = item.thumbUrl || item.url;
+                applyImgLayout(img, item, mergedW, mergedH, isAutoFit, isAlphaLayout, autoFitMode);
+                tile.appendChild(img);
+
+                if (showLabelCheck.checked) {
+                    const label = document.createElement('div');
+                    label.className = 'label';
+                    label.innerText = item.name;
+                    label.style.setProperty('--offset-y', offsetYInput.value + 'px');
+                    label.style.setProperty('--font-size', fontSizeInput.value + 'px');
+                    tile.appendChild(label);
+                }
+            }
+
+            tile.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (irregularLayoutCheck.checked && e.shiftKey) {
+                    const foundIdx = selectedTileIndices.indexOf(i);
+                    if (foundIdx > -1) {
+                        selectedTileIndices.splice(foundIdx, 1);
+                    } else {
+                        selectedTileIndices.push(i);
+                    }
+                } else {
+                    if (selectedTileIndices.length === 1 && selectedTileIndices[0] === i) {
+                        selectedTileIndices = [];
+                    } else {
+                        selectedTileIndices = [i];
+                    }
+                }
+                updateTileSelection();
+                updateItemScaleUI();
+            });
+
+            tile.addEventListener('dragstart', handleDragStart);
+            tile.addEventListener('dragover', (e) => e.preventDefault());
+            tile.addEventListener('drop', handleDrop);
+            tile.addEventListener('dragend', handleDragEnd);
+
+            gridContainer.appendChild(tile);
+        }
+    }
+
+    let dragSrcIndex = null;
+    let dragGhostCanvas = null;
+
+    function handleDragStart(e) {
+        const cell = gridData[this.dataset.index];
+        if (!cell || !cell.item) { e.preventDefault(); return; }
+
+        dragSrcIndex = parseInt(this.dataset.index);
+        this.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/grid-index', dragSrcIndex);
+
+        const item = cell.item;
+        const viewScale = currentZoom / 100;
+        const itemScale = item.scale || 1.0;
+        const tileW = parseInt(tileWInput.value) || 100;
+        const tileH = parseInt(tileHInput.value) || 100;
+
+        const mergedW = cell.colSpan * tileW + (cell.colSpan - 1) * (parseInt(gapXInput.value) || 0);
+        const mergedH = cell.rowSpan * tileH + (cell.rowSpan - 1) * (parseInt(gapYInput.value) || 0);
+
+        const ghostW = Math.round(mergedW * viewScale);
+        const ghostH = Math.round(mergedH * viewScale);
+
+        dragGhostCanvas = document.createElement('canvas');
+        dragGhostCanvas.width = ghostW; dragGhostCanvas.height = ghostH;
+        dragGhostCanvas.style.position = 'absolute';
+        dragGhostCanvas.style.top = '-9999px'; dragGhostCanvas.style.left = '-9999px';
+        document.body.appendChild(dragGhostCanvas);
+
+        const ctx = dragGhostCanvas.getContext('2d');
+        ctx.fillStyle = 'rgba(25, 20, 22, 0.85)';
+        ctx.strokeStyle = '#e2b067';
+        ctx.lineWidth = 2 * viewScale;
+        ctx.fillRect(0, 0, ghostW, ghostH);
+        ctx.strokeRect(0, 0, ghostW, ghostH);
+
+        const srcCanvas = item.thumbCanvas;
+        const isAlpha = alphaLayoutCheck.checked;
+        const isAutoFit = autoFitLayoutCheck.checked;
+        const autoFitMode = document.querySelector('input[name="autoFitMode"]:checked')?.value || 'A';
+        const ox = (item.offsetX || 0) * viewScale;
+        const oy = (item.offsetY || 0) * viewScale;
+
+        ctx.save();
+        if (!srcCanvas) {
+            // 沒有縮圖時只畫外框
+        } else if (isAutoFit) {
+            const autoScale = getAutoFitScale(mergedW, mergedH, item.width, item.height, autoFitMode);
+            const dw = item.width * autoScale * viewScale;
+            const dh = item.height * autoScale * viewScale;
+
+            ctx.translate(ghostW/2 + ox, ghostH/2 + oy);
+            ctx.scale(itemScale, itemScale);
+            ctx.translate(-(ghostW/2 + ox), -(ghostH/2 + oy));
+            ctx.drawImage(srcCanvas, (ghostW - dw) / 2 + ox, (ghostH - dh) / 2 + oy, dw, dh);
+        } else if (isAlpha) {
+            let drawX, drawY;
+            if (item.isPsd) {
+                const dx = (item.left + item.width/2) - (psdCanvasWidth/2);
+                const dy = (item.top + item.height/2) - (psdCanvasHeight/2);
+                drawX = (ghostW/2) + (dx*viewScale) - (item.width*viewScale)/2 + ox;
+                drawY = (ghostH/2) + (dy*viewScale) - (item.height*viewScale)/2 + oy;
+            } else {
+                drawX = (ghostW/2) - (item.width*viewScale)/2 + ox;
+                drawY = (ghostH/2) - (item.height*viewScale)/2 + oy;
+            }
+            ctx.translate(ghostW/2, ghostH/2);
+            ctx.scale(itemScale, itemScale);
+            ctx.translate(-ghostW/2, -ghostH/2);
+            ctx.drawImage(srcCanvas, drawX, drawY, item.width*viewScale, item.height*viewScale);
+        } else {
+            const dw = item.width * viewScale;
+            const dh = item.height * viewScale;
+            ctx.translate(ghostW/2 + ox, ghostH/2 + oy);
+            ctx.scale(itemScale, itemScale);
+            ctx.translate(-(ghostW/2 + ox), -(ghostH/2 + oy));
+            ctx.drawImage(srcCanvas, (ghostW - dw) / 2 + ox, (ghostH - dh) / 2 + oy, dw, dh);
+        }
+        ctx.restore();
+
+        const rect = this.getBoundingClientRect();
+        e.dataTransfer.setDragImage(dragGhostCanvas, (e.clientX - rect.left), (e.clientY - rect.top));
+    }
+
+    function handleDrop(e) {
+        e.stopPropagation();
+        const targetIndex = parseInt(this.dataset.index);
+        
+        const paletteIdx = e.dataTransfer.getData('text/palette-index');
+        if (paletteIdx !== "") {
+            const sourceItems = currentLoadedGroups[groupSelect.value];
+            if (sourceItems && sourceItems[paletteIdx]) {
+                gridData[targetIndex].item = { ...sourceItems[paletteIdx], scale: 1.0, offsetX: 0, offsetY: 0 };
+                requestRenderGrid();
+            }
+            return false;
+        }
+
+        if (dragSrcIndex !== null && dragSrcIndex !== targetIndex) {
+            const temp = gridData[dragSrcIndex].item;
+            gridData[dragSrcIndex].item = gridData[targetIndex].item;
+            gridData[targetIndex].item = temp;
+            requestRenderGrid();
+        }
+        return false;
+    }
+
+    function handleDragEnd() {
+        this.classList.remove('dragging');
+        if (dragGhostCanvas && dragGhostCanvas.parentNode) {
+            dragGhostCanvas.parentNode.removeChild(dragGhostCanvas);
+            dragGhostCanvas = null;
+        }
+        dragSrcIndex = null;
+    }
+
+    const btnExport = document.getElementById('btnExport');
+    btnExport.addEventListener('click', async () => {
+        if (btnExport.disabled) return;
+        btnExport.disabled = true;
+        const prevAlert = alertDiv.innerText;
+        alertDiv.innerText = '⏳ 讀取原始解析度圖片並匯出中...';
+        await new Promise(r => setTimeout(r, 20));
+        try {
+            await exportArrangement();
+        } catch (err) {
+            console.error(err);
+            alert('匯出失敗：' + err.message);
+        } finally {
+            btnExport.disabled = false;
+            alertDiv.innerText = prevAlert;
+        }
+    });
+
+    async function exportArrangement() {
+        const cols = parseInt(colsInput.value) || 1;
+        const rows = parseInt(rowsInput.value) || 1;
+        const tileW = parseInt(tileWInput.value) || 100;
+        const tileH = parseInt(tileHInput.value) || 100;
+        const gapX = parseInt(gapXInput.value) || 0;
+        const gapY = parseInt(gapYInput.value) || 0;
+        const isAlphaLayout = alphaLayoutCheck.checked;
+        const isAutoFit = autoFitLayoutCheck.checked;
+        const autoFitMode = document.querySelector('input[name="autoFitMode"]:checked')?.value || 'A';
+
+        const totalW = cols * tileW + (cols - 1) * gapX;
+        const totalH = rows * tileH + (rows - 1) * gapY;
+
+        const exportCanvas = document.createElement('canvas');
+        exportCanvas.width = totalW; exportCanvas.height = totalH;
+        const ctx = exportCanvas.getContext('2d');
+
+        const isJpeg = exportFormat.value === 'jpeg';
+        if (bgType.value === 'color' || isJpeg) {
+            ctx.fillStyle = bgColorInput.value;
+            ctx.fillRect(0, 0, totalW, totalH);
+        }
+
+        // 每個來源檔最後一次被使用的格子，畫完即釋放其全解析度 Canvas
+        const lastUse = new Map();
+        let needPsd = false;
+        for (let i = 0; i < cols * rows; i++) {
+            const cell = gridData[i];
+            if (!cell || cell.isCovered || !cell.item) continue;
+            if (cell.item.isPsd) needPsd = true;
+            else lastUse.set(cell.item.file, i);
+        }
+        let psd = (needPsd && psdBuffer) ? agPsd.readPsd(psdBuffer, PSD_READ_OPTS) : null;
+        const fileCanvasCache = new Map();
+
+        for (let i = 0; i < cols * rows; i++) {
+            const cell = gridData[i];
+            if (!cell || cell.isCovered) continue;
+
+            const item = cell.item;
+            const r = Math.floor(i / cols);
+            const c = i % cols;
+
+            const x = c * (tileW + gapX);
+            const y = r * (tileH + gapY);
+            const mergedW = cell.colSpan * tileW + (cell.colSpan - 1) * gapX;
+            const mergedH = cell.rowSpan * tileH + (cell.rowSpan - 1) * gapY;
+
+            if (item) {
+                // 匯出時一律切換回 100% 原始解析度的 Canvas 繪製，無損拼接
+                let srcCanvas;
+                if (item.isPsd) {
+                    srcCanvas = psd ? getPsdLayer(psd, item.psdPath).canvas : null;
+                } else {
+                    srcCanvas = fileCanvasCache.get(item.file);
+                    if (!srcCanvas) {
+                        srcCanvas = await loadFullCanvas(item.file);
+                        fileCanvasCache.set(item.file, srcCanvas);
+                    }
+                }
+                if (!srcCanvas) continue;
+                const itemScale = item.scale || 1.0;
+                const ox = item.offsetX || 0;
+                const oy = item.offsetY || 0;
+
+                ctx.save();
+                const centerX = x + mergedW / 2;
+                const centerY = y + mergedH / 2;
+
+                ctx.translate(centerX + ox, centerY + oy);
+                ctx.scale(itemScale, itemScale);
+                ctx.translate(-(centerX + ox), -(centerY + oy));
+
+                let nw = srcCanvas.width, nh = srcCanvas.height;
+                let offX, offY;
+
+                if (isAutoFit) {
+                    const autoScale = getAutoFitScale(mergedW, mergedH, srcCanvas.width, srcCanvas.height, autoFitMode);
+                    nw = srcCanvas.width * autoScale;
+                    nh = srcCanvas.height * autoScale;
+
+                    if (isAlphaLayout && item.isPsd) {
+                        const dx = (item.left + srcCanvas.width/2) - (psdCanvasWidth/2);
+                        const dy = (item.top + srcCanvas.height/2) - (psdCanvasHeight/2);
+                        offX = x + (mergedW/2) + dx - (nw/2) + ox;
+                        offY = y + (mergedH/2) + dy - (nh/2) + oy;
+                    } else {
+                        offX = x + (mergedW - nw) / 2 + ox;
+                        offY = y + (mergedH - nh) / 2 + oy;
+                    }
+                } else if (isAlphaLayout) {
+                    if (item.isPsd) {
+                        const dx = (item.left + srcCanvas.width/2) - (psdCanvasWidth/2);
+                        const dy = (item.top + srcCanvas.height/2) - (psdCanvasHeight/2);
+                        offX = x + (mergedW/2) + dx - (srcCanvas.width/2) + ox;
+                        offY = y + (mergedH/2) + dy - (srcCanvas.height/2) + oy;
+                    } else {
+                        offX = x + (mergedW - srcCanvas.width) / 2 + ox;
+                        offY = y + (mergedH - srcCanvas.height) / 2 + oy;
+                    }
+                } else {
+                    nw = srcCanvas.width;
+                    nh = srcCanvas.height;
+                    offX = x + (mergedW - nw) / 2 + ox;
+                    offY = y + (mergedH - nh) / 2 + oy;
+                }
+
+                ctx.drawImage(srcCanvas, offX, offY, nw, nh);
+                ctx.restore();
+
+                if (!item.isPsd && lastUse.get(item.file) === i) {
+                    releaseCanvas(srcCanvas);
+                    fileCanvasCache.delete(item.file);
+                }
+
+                if (showLabelCheck.checked) {
+                    ctx.font = `bold ${parseInt(fontSizeInput.value) || 12}px sans-serif`;
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+                    const tx = x + mergedW / 2, ty = y + mergedH - (parseInt(offsetYInput.value) || 8);
+                    ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.strokeText(item.name, tx, ty);
+                    ctx.fillStyle = '#fff'; ctx.fillText(item.name, tx, ty);
+                }
+            }
+        }
+
+        psd = null;
+        fileCanvasCache.forEach(releaseCanvas);
+        fileCanvasCache.clear();
+
+        // 使用 toBlob（與 toDataURL 同一個編碼器，輸出內容相同），避免超大圖產生巨大 base64 字串
+        const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
+        const blob = await new Promise(r => exportCanvas.toBlob(r, mimeType, 0.95));
+        releaseCanvas(exportCanvas);
+        if (!blob) throw new Error('畫布過大，瀏覽器無法編碼此尺寸的圖檔');
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.download = `Arrangement_${Date.now()}.${isJpeg ? 'jpg' : 'png'}`;
+        link.href = url;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
+
+    updateBgOptionVisibility();
+    updateTransform();
+    updatePaletteTransform();
+    updateItemScaleUI();
+</script>
+</body>
+</html>
