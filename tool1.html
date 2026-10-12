@@ -427,20 +427,16 @@
             position: relative; 
             cursor: default;
             background: transparent;
-            backdrop-filter: none;
-            -webkit-backdrop-filter: none;
-            transition: background-color 0.4s ease, backdrop-filter 0.4s ease, -webkit-backdrop-filter 0.4s ease;
+            transition: background-color 0.4s ease;
         }
 
-        /* 載入圖檔後動態激活微霧狀玻璃 */
+        /* 載入圖檔後改用較不透明的底色取代 backdrop-filter 模糊（平移/縮放時每幀重算模糊很耗效能） */
         #viewport.has-loaded-content {
-            background-color: rgba(20, 16, 18, 0.4);
+            background-color: rgba(20, 16, 18, 0.78);
             background-image:
                 radial-gradient(circle at 50% 50%, rgba(200, 160, 140, 0.08) 0, rgba(0,0,0,0) 65%),
                 radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 0);
             background-size: auto, 24px 24px;
-            backdrop-filter: blur(12px) saturate(130%);
-            -webkit-backdrop-filter: blur(12px) saturate(130%);
         }
 
         #viewport.panning { cursor: grabbing !important; }
@@ -455,7 +451,7 @@
         }
         #scale-wrapper { display: inline-block; transform-origin: center center; will-change: transform; }
 
-        #grid-container { display: grid; padding: 0; background: rgba(0, 0, 0, 0.25); border: 1px dashed var(--border-glass); border-radius: var(--radius-lg); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
+        #grid-container { display: grid; padding: 0; background: rgba(0, 0, 0, 0.25); border: 1px dashed var(--border-glass); border-radius: var(--radius-lg); }
         .tile { 
             position: relative; 
             background: rgba(255, 255, 255, 0.04); 
@@ -469,15 +465,14 @@
             border-radius: var(--radius-md); 
             box-sizing: border-box; 
             transition: border-color 0.15s ease, box-shadow 0.15s ease; 
-            outline: none; 
-            will-change: transform;
+            outline: none;
         }
         .tile:hover { border-color: var(--accent-white); background: rgba(255, 255, 255, 0.08); }
         .tile.selected { border: 2px solid var(--accent-gold) !important; box-shadow: 0 0 0 4px var(--accent-gold-soft), 0 10px 25px rgba(226, 176, 103, 0.25); z-index: 5; background: rgba(226, 176, 103, 0.12); }
         .tile.dragging { opacity: 0.3; border-color: var(--accent-white); }
         .tile img { pointer-events: none; }
         .tile:not(.alpha-mode):not(.autofit-mode) img { max-width: 100%; max-height: 100%; object-fit: contain; }
-        .tile .label { position: absolute; bottom: var(--offset-y, 10px); left: 50%; transform: translateX(-50%); font-size: var(--font-size, 12px); color: #fff; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9), 0 0 2px #000; pointer-events: none; white-space: nowrap; font-weight: 600; z-index: 10; background: rgba(0,0,0,0.4); padding: 2px 8px; border-radius: var(--radius-pill); backdrop-filter: blur(4px); }
+        .tile .label { position: absolute; bottom: var(--offset-y, 10px); left: 50%; transform: translateX(-50%); font-size: var(--font-size, 12px); color: #fff; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9), 0 0 2px #000; pointer-events: none; white-space: nowrap; font-weight: 600; z-index: 10; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: var(--radius-pill); }
 
         #folderTree { max-height: 220px; overflow: auto; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border-glass); border-radius: var(--radius-md); padding: 6px; font-size: 12px; user-select: none; }
         #folderTree .tree-empty { color: var(--text-muted); padding: 8px 10px; }
@@ -929,7 +924,7 @@
                 cell.item.offsetY = Math.round(initialOffsetY + dy);
                 itemOffsetX.value = cell.item.offsetX;
                 itemOffsetY.value = cell.item.offsetY;
-                requestRenderGrid();
+                updateTileImgs([dragItemTileIndex]);
             }
         }
     });
@@ -992,7 +987,7 @@
                 cell.item.scale = currentScale / 100;
                 
                 updateItemScaleUI();
-                requestRenderGrid();
+                updateTileImgs([primaryIdx]);
                 return;
             }
         }
@@ -1346,7 +1341,7 @@
                 if (gridData[idx] && gridData[idx].item) gridData[idx].item.scale = val / 100;
             });
             updateItemScaleUI();
-            requestRenderGrid();
+            updateTileImgs(selectedTileIndices);
         }
     }
 
@@ -1360,7 +1355,7 @@
                     gridData[idx].item.offsetY = oy;
                 }
             });
-            requestRenderGrid();
+            updateTileImgs(selectedTileIndices);
         }
     }
 
@@ -1722,6 +1717,79 @@
         }
     }
 
+    // 設定格子內 img 的位置/大小/變形。使用 2D translate 而非 translate3d，避免每張圖被提升成獨立 GPU 圖層
+    function applyImgLayout(img, item, mergedW, mergedH, isAutoFit, isAlphaLayout, autoFitMode) {
+        const scale = item.scale || 1.0;
+        const ox = item.offsetX || 0;
+        const oy = item.offsetY || 0;
+
+        if (isAutoFit) {
+            const autoScale = getAutoFitScale(mergedW, mergedH, item.width, item.height, autoFitMode);
+            const renderW = item.width * autoScale;
+            const renderH = item.height * autoScale;
+
+            img.style.position = 'absolute';
+            img.style.width = renderW + 'px';
+            img.style.height = renderH + 'px';
+
+            if (isAlphaLayout && item.isPsd) {
+                const layerCenterX = item.left + (item.width / 2);
+                const layerCenterY = item.top + (item.height / 2);
+                const dx = layerCenterX - (psdCanvasWidth / 2);
+                const dy = layerCenterY - (psdCanvasHeight / 2);
+                img.style.left = ((mergedW / 2) + dx - (renderW / 2)) + 'px';
+                img.style.top = ((mergedH / 2) + dy - (renderH / 2)) + 'px';
+            } else {
+                img.style.left = ((mergedW - renderW) / 2) + 'px';
+                img.style.top = ((mergedH - renderH) / 2) + 'px';
+            }
+            img.style.transform = `translate(${ox}px, ${oy}px) scale(${scale})`;
+        } else if (isAlphaLayout) {
+            img.style.position = 'absolute';
+            if (item.isPsd) {
+                const layerCenterX = item.left + (item.width / 2);
+                const layerCenterY = item.top + (item.height / 2);
+                const dx = layerCenterX - (psdCanvasWidth / 2);
+                const dy = layerCenterY - (psdCanvasHeight / 2);
+
+                img.style.left = ((mergedW / 2) + dx - (item.width / 2) + ox) + 'px';
+                img.style.top = ((mergedH / 2) + dy - (item.height / 2) + oy) + 'px';
+                img.style.width = item.width + 'px';
+                img.style.height = item.height + 'px';
+            } else {
+                img.style.left = ((mergedW - item.width) / 2 + ox) + 'px';
+                img.style.top = ((mergedH - item.height) / 2 + oy) + 'px';
+                img.style.width = item.width + 'px';
+                img.style.height = item.height + 'px';
+            }
+            img.style.transform = `scale(${scale})`;
+        } else {
+            /* 強制還原顯示寬高為原始圖層的真實邏輯尺寸 (如 2500x2100px) */
+            img.style.width = item.width + 'px';
+            img.style.height = item.height + 'px';
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '100%';
+            img.style.objectFit = 'contain';
+            img.style.transform = `translate(${ox}px, ${oy}px) scale(${scale})`;
+        }
+    }
+
+    // 只更新指定格子的 img，不重建整個格子 DOM（拖動縮放/位移時使用）
+    function updateTileImgs(indices) {
+        if (rafPending) return; // 已排程整體重繪，交給它處理
+        const isAutoFit = autoFitLayoutCheck.checked;
+        const isAlphaLayout = alphaLayoutCheck.checked;
+        const autoFitMode = document.querySelector('input[name="autoFitMode"]:checked')?.value || 'A';
+        indices.forEach(idx => {
+            const cell = gridData[idx];
+            if (!cell || !cell.item) return;
+            const tile = gridContainer.querySelector(`.tile[data-index="${idx}"]`);
+            const img = tile && tile.querySelector('img');
+            if (!img) return;
+            applyImgLayout(img, cell.item, parseFloat(tile.style.width), parseFloat(tile.style.height), isAutoFit, isAlphaLayout, autoFitMode);
+        });
+    }
+
     function renderGrid() {
         const cols = parseInt(colsInput.value) || 1;
         const rows = parseInt(rowsInput.value) || 1;
@@ -1772,60 +1840,7 @@
                 const img = document.createElement('img');
                 // 核心優化：畫面預覽直接掛載輕量化的 ThumbURL，避免 GPU 重複載入龐大原尺寸 Texture
                 img.src = item.thumbUrl || item.url;
-                const scale = item.scale || 1.0;
-                const ox = item.offsetX || 0;
-                const oy = item.offsetY || 0;
-                
-                if (isAutoFit) {
-                    const autoScale = getAutoFitScale(mergedW, mergedH, item.width, item.height, autoFitMode);
-                    const renderW = item.width * autoScale;
-                    const renderH = item.height * autoScale;
-
-                    img.style.position = 'absolute';
-                    img.style.width = renderW + 'px';
-                    img.style.height = renderH + 'px';
-
-                    if (isAlphaLayout && item.isPsd) {
-                        const layerCenterX = item.left + (item.width / 2);
-                        const layerCenterY = item.top + (item.height / 2);
-                        const dx = layerCenterX - (psdCanvasWidth / 2);
-                        const dy = layerCenterY - (psdCanvasHeight / 2);
-                        img.style.left = ((mergedW / 2) + dx - (renderW / 2)) + 'px';
-                        img.style.top = ((mergedH / 2) + dy - (renderH / 2)) + 'px';
-                    } else {
-                        img.style.left = ((mergedW - renderW) / 2) + 'px';
-                        img.style.top = ((mergedH - renderH) / 2) + 'px';
-                    }
-                    img.style.transform = `translate3d(${ox}px, ${oy}px, 0) scale(${scale})`;
-                } else if (isAlphaLayout) {
-                    img.style.position = 'absolute';
-                    if (item.isPsd) {
-                        const layerCenterX = item.left + (item.width / 2);
-                        const layerCenterY = item.top + (item.height / 2);
-                        const dx = layerCenterX - (psdCanvasWidth / 2);
-                        const dy = layerCenterY - (psdCanvasHeight / 2);
-                        
-                        img.style.left = ((mergedW / 2) + dx - (item.width / 2) + ox) + 'px';
-                        img.style.top = ((mergedH / 2) + dy - (item.height / 2) + oy) + 'px';
-                        img.style.width = item.width + 'px';
-                        img.style.height = item.height + 'px';
-                    } else {
-                        img.style.left = ((mergedW - item.width) / 2 + ox) + 'px';
-                        img.style.top = ((mergedH - item.height) / 2 + oy) + 'px';
-                        img.style.width = item.width + 'px';
-                        img.style.height = item.height + 'px';
-                    }
-                    img.style.transform = `scale(${scale})`;
-                } else {
-                    /* 強制還原顯示寬高為原始圖層的真實邏輯尺寸 (如 2500x2100px) */
-                    img.style.width = item.width + 'px';
-                    img.style.height = item.height + 'px';
-                    img.style.maxWidth = '100%';
-                    img.style.maxHeight = '100%';
-                    img.style.objectFit = 'contain';
-                    img.style.transform = `translate3d(${ox}px, ${oy}px, 0) scale(${scale})`;
-                }
-
+                applyImgLayout(img, item, mergedW, mergedH, isAutoFit, isAlphaLayout, autoFitMode);
                 tile.appendChild(img);
 
                 if (showLabelCheck.checked) {
