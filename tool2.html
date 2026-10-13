@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PSD 圖層逐張檢視與批量匯出工具 (Tool 2 Pro ZIP)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/ag-psd/dist/bundle.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        :root {
+            /* Warm Earth & Dusk Atmospheric Palette (與 tool1 一致) */
+            --card-glass: rgba(255, 255, 255, 0.07);
+            --border-glass: rgba(255, 255, 255, 0.18);
+            --border-glass-light: rgba(255, 255, 255, 0.28);
+            --border-subtle: rgba(255, 255, 255, 0.08);
+
+            --text-primary: #f5f2ee;
+            --text-secondary: #cbbfb6;
+            --text-muted: #8e837a;
+
+            --accent-black: #0d0c0e;
+            --accent-white: #ffffff;
+            --accent-warm: #d3bead;
+            --accent-gold: #e2b067;
+            --accent-gold-soft: rgba(226, 176, 103, 0.2);
+            --danger-red: #e05d53;
+
+            --font-main: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", sans-serif;
+            --radius-pill: 9999px;
+            --radius-xl: 26px;
+            --radius-lg: 18px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: var(--font-main);
+            display: flex;
+            height: 100vh;
+            color: var(--text-primary);
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+            background-color: #1a1518;
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(200, 160, 140, 0.25) 0%, rgba(0, 0, 0, 0) 70%),
+                radial-gradient(ellipse 60% 40% at 85% 90%, rgba(160, 110, 95, 0.20) 0%, rgba(0, 0, 0, 0) 70%),
+                linear-gradient(135deg, rgba(18, 14, 18, 0.70) 0%, rgba(10, 8, 10, 0.85) 100%),
+                url('image/bg.jpg'),
+                linear-gradient(135deg, #2a2225 0%, #131013 100%);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        #app-body {
+            display: flex;
+            width: calc(100vw - 32px);
+            height: calc(100vh - 32px);
+            margin: 16px;
+            border-radius: var(--radius-xl);
+            overflow: hidden;
+            background: rgba(20, 16, 18, 0.25);
+            border: 1px solid var(--border-glass-light);
+            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.75), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+            position: relative;
+        }
+
+        /* 左側控制面板 */
+        #sidebar {
+            width: 350px;
+            background: rgba(20, 16, 18, 0.45);
+            backdrop-filter: blur(12px) saturate(130%);
+            -webkit-backdrop-filter: blur(12px) saturate(130%);
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            border-right: 1px solid var(--border-subtle);
+            flex-shrink: 0;
+            z-index: 10;
+            box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.08);
+        }
+
+        #sidebar::-webkit-scrollbar { width: 5px; height: 5px; }
+        #sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 999px; }
+
+        #sidebar .app-title {
+            font-size: 14px;
+            font-weight: 700;
+            padding: 4px 4px 12px;
+            border-bottom: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        #sidebar .app-title .brand-badge {
+            font-size: 10px;
+            font-weight: 800;
+            background: var(--accent-white);
+            color: var(--accent-black);
+            padding: 2px 8px;
+            border-radius: var(--radius-pill);
+            letter-spacing: 0.06em;
+        }
+
+        .control-group {
+            background: var(--card-glass);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            padding: 14px 16px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-glass);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 24px rgba(0, 0, 0, 0.15);
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+        .control-group:hover {
+            border-color: rgba(255, 255, 255, 0.35);
+            background: rgba(255, 255, 255, 0.09);
+        }
+
+        .control-group h3 {
+            font-size: 11px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .control-group h3 .num-tag {
+            font-size: 13px;
+            font-weight: 800;
+            color: var(--accent-warm);
+            letter-spacing: -0.02em;
+        }
+
+        label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            margin: 8px 0;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        input[type="number"], select {
+            width: 85px;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--border-glass);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-family: inherit;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        select option { background: #1e181b; color: var(--text-primary); }
+
+        input[type="number"]:focus, select:focus {
+            outline: none;
+            border-color: var(--accent-white);
+            background: rgba(0, 0, 0, 0.55);
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
+        }
+        input:disabled, select:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        input[type="range"] { accent-color: var(--accent-white); cursor: pointer; }
+        input[type="checkbox"] { accent-color: var(--accent-white); cursor: pointer; width: 14px; height: 14px; flex-shrink: 0; }
+        input[type="color"] { border: 1px solid var(--border-glass); border-radius: var(--radius-sm); width: 34px; height: 26px; cursor: pointer; background: transparent; padding: 2px; }
+
+        input[type="file"] { font-family: inherit; font-size: 11px; color: var(--text-secondary); }
+        input[type="file"]::file-selector-button {
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 700;
+            background: var(--accent-black);
+            color: var(--accent-white);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-pill);
+            padding: 6px 14px;
+            margin-right: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        input[type="file"]::file-selector-button:hover {
+            background: var(--accent-white);
+            color: var(--accent-black);
+            transform: translateY(-1px);
+        }
+
+        .row-inputs { display: flex; gap: 8px; }
+        .row-inputs label { flex: 1; margin: 0; }
+        .row-inputs input[type="number"] { width: 70px; }
+
+        /* 勾選框列：文字在左、勾選框在右（同 tool1） */
+        .check-row { color: var(--text-primary); font-weight: 600; cursor: pointer; gap: 10px; }
+        .check-row.accent { color: var(--accent-warm); }
+
+        .hint { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+
+        button {
+            background: var(--accent-white);
+            color: var(--accent-black);
+            border: 1px solid transparent;
+            padding: 10px 16px;
+            border-radius: var(--radius-pill);
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            width: 100%;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        button:hover {
+            background: var(--accent-warm);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+        button:active { transform: translateY(1px); }
+        button:disabled { opacity: 0.5; cursor: wait; transform: none; }
+
+        button.export-btn {
+            background: var(--accent-black);
+            color: var(--accent-white);
+            border: 1px solid var(--border-glass-light);
+            margin-top: 8px;
+        }
+        button.export-btn:hover:not(:disabled) {
+            background: var(--accent-white);
+            color: var(--accent-black);
+        }
+
+        /* 中央預覽區 */
+        #main { flex: 1; display: flex; flex-direction: column; background: transparent; overflow: hidden; position: relative; }
+
+        #toolbar {
+            background: rgba(20, 16, 18, 0.45);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 0 20px;
+            height: 54px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            border-bottom: 1px solid var(--border-subtle);
+            font-size: 12px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+            z-index: 10;
+            position: relative;
+        }
+        #toolbar input[type="range"] { flex: 1; max-width: 140px; }
+        #toolbar button {
+            width: auto;
+            padding: 5px 14px;
+            font-size: 11px;
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            border: 1px solid var(--border-glass);
+            font-weight: 600;
+        }
+        #toolbar button:hover { background: var(--accent-white); color: var(--accent-black); }
+        #layerInfo { color: var(--text-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+        #layerInfo b { color: var(--text-primary); }
+
+        .tips-wrapper { margin-left: auto; position: relative; }
+        .tips-icon-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-glass);
+            color: var(--accent-white);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 800;
+            transition: all 0.2s ease;
+        }
+        .tips-icon-btn:hover { background: var(--accent-white); color: var(--accent-black); }
+
+        .note-popup {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 42px;
+            background: rgba(25, 20, 22, 0.92);
+            backdrop-filter: blur(24px);
+            border: 1px solid var(--border-glass-light);
+            border-radius: var(--radius-lg);
+            padding: 16px 18px;
+            width: 320px;
+            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.7);
+            z-index: 100;
+            font-size: 12px;
+            line-height: 1.7;
+        }
+        .note-popup.show { display: block; }
+        .note-popup h4 { font-size: 11px; font-weight: 700; color: var(--accent-warm); text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px; margin-bottom: 10px; }
+        .note-popup ul { list-style: none; }
+        .note-popup li { margin-bottom: 6px; display: flex; align-items: flex-start; gap: 6px; color: var(--text-secondary); }
+        .note-popup li b { color: var(--text-primary); white-space: nowrap; }
+
+        /* 中央畫布視域：未載入時完全透明，載入後換成不透明底色（避免平移時重算模糊） */
+        #viewport {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            cursor: default;
+            background: transparent;
+            transition: background-color 0.4s ease;
+        }
+        #viewport.has-loaded-content {
+            background-color: rgba(20, 16, 18, 0.78);
+            background-image:
+                radial-gradient(circle at 50% 50%, rgba(200, 160, 140, 0.08) 0, rgba(0,0,0,0) 65%),
+                radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 0);
+            background-size: auto, 24px 24px;
+        }
+        #viewport.panning { cursor: grabbing !important; }
+        #pan-wrapper {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate3d(-50%, -50%, 0);
+            transform-origin: 0 0;
+            will-change: transform;
+        }
+        #scale-wrapper { display: inline-block; transform-origin: center center; will-change: transform; }
+
+        .empty-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 13px; letter-spacing: 0.04em; pointer-events: none; }
+        #viewport.has-loaded-content .empty-hint { display: none; }
+
+        /* 單張預覽容器 */
+        #preview-stage {
+            position: relative;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px dashed var(--border-glass-light);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            border-radius: var(--radius-md);
+            box-sizing: border-box;
+        }
+        #viewport:not(.has-loaded-content) #preview-stage { display: none; }
+        #preview-stage canvas { position: absolute; pointer-events: none; }
+        /* 預覽標籤樣式與匯出時的描邊文字保持一致 */
+        #preview-stage .label { position: absolute; bottom: var(--offset-y, 8px); left: 50%; transform: translateX(-50%); font-size: var(--font-size, 12px); color: #fff; text-shadow: 1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000; pointer-events: none; white-space: nowrap; font-weight: bold; font-family: sans-serif; }
+
+        /* 右側圖層庫面板 */
+        #right-panel {
+            width: 270px;
+            background: rgba(20, 16, 18, 0.45);
+            backdrop-filter: blur(12px) saturate(130%);
+            -webkit-backdrop-filter: blur(12px) saturate(130%);
+            border-left: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            z-index: 10;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.08);
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 0 16px;
+            height: 54px;
+            background: transparent;
+            z-index: 20;
+        }
+        .panel-header h2 { font-size: 12px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.06em; margin: 0; }
+        .panel-header .zoom-info { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+        .panel-header button { width: auto; padding: 4px 10px; font-size: 10px; background: rgba(255, 255, 255, 0.1); color: var(--text-primary); border: 1px solid var(--border-glass); font-weight: 600; }
+        .panel-header button:hover { background: var(--accent-white); color: var(--accent-black); box-shadow: none; }
+
+        #palette-viewport { flex: 1; overflow: hidden; position: relative; background: transparent; cursor: default; }
+        #palette-viewport.panning { cursor: grabbing !important; }
+        #palette-pan-wrapper { position: absolute; top: 0; left: 0; width: 100%; transform-origin: 0 0; will-change: transform; }
+
+        #palette-container {
+            padding: 12px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            align-content: start;
+            --palette-scale: 1;
+        }
+
+        .palette-item {
+            background: var(--card-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-md);
+            padding: 8px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+            position: relative;
+            user-select: none;
+        }
+        .palette-item:hover {
+            border-color: var(--accent-white);
+            transform: translateY(-2px) scale(1.03);
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.16);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+        }
+        .palette-item.active {
+            border: 2px solid var(--accent-gold);
+            background: rgba(226, 176, 103, 0.12);
+            box-shadow: 0 0 0 4px var(--accent-gold-soft), 0 10px 25px rgba(226, 176, 103, 0.25);
+        }
+        .palette-img-box { width: 100%; height: calc(75px * var(--palette-scale)); min-height: 40px; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: var(--radius-sm); }
+        .palette-img-box canvas { max-width: 100%; max-height: 100%; object-fit: contain; pointer-events: none; }
+        .palette-item span { font-size: calc(10px * max(0.8, var(--palette-scale))); color: var(--text-secondary); margin-top: 6px; text-align: center; word-break: break-all; pointer-events: none; font-weight: 500; }
+        .palette-item.active span { color: var(--text-primary); font-weight: 600; }
+
+        #alert { color: var(--accent-gold); font-size: 11px; line-height: 1.4; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+<div id="app-body">
+    <!-- 左側面板 -->
+    <div id="sidebar">
+        <div class="app-title">
+            <span>PSD 逐張批量輸出工具</span>
+            <span class="brand-badge">Tool 2</span>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">01</span> 載入 PSD 檔案</h3>
+            <input type="file" id="psdInput" accept=".psd" style="width:100%">
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">02</span> 選擇資料夾 / 群組</h3>
+            <select id="groupSelect" style="width:100%"><option value="">請先載入 PSD 檔案</option></select>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">03</span> 位置與畫布基準模式</h3>
+            <label class="check-row">
+                記錄 PSD 相對位置 (以 PSD 畫布為基準)
+                <input type="checkbox" id="useRelativePos">
+            </label>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">04</span> 圖層畫布尺寸 (px)</h3>
+            <label class="check-row">
+                統一畫布大小 (套用到所有圖層)
+                <input type="checkbox" id="syncCanvasSize" checked>
+            </label>
+            <label class="check-row accent" id="autoDetectSizeWrapper" style="display:none;">
+                自動偵測每張圖大小作為畫布大小
+                <input type="checkbox" id="autoDetectSize">
+            </label>
+            <div class="row-inputs" style="margin-top:8px;">
+                <label>寬: <input type="number" id="canvasW" value="300" min="1"></label>
+                <label>高: <input type="number" id="canvasH" value="300" min="1"></label>
+            </div>
+            <div id="canvasHint" class="hint">勾選「統一」時，調整將會同步更新群組內所有圖層</div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">05</span> 圖層名稱標籤顯示</h3>
+            <label class="check-row">顯示名稱文字 <input type="checkbox" id="showLabel" checked></label>
+            <div class="row-inputs">
+                <label>字體大小: <input type="number" id="fontSize" value="14" min="8"></label>
+                <label>距底部: <input type="number" id="offsetY" value="12"></label>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">06</span> 批量輸出設定</h3>
+            <label>圖片格式:
+                <select id="exportFormat" style="width:110px;">
+                    <option value="png">PNG</option>
+                    <option value="jpeg">JPG</option>
+                </select>
+            </label>
+            <label>背景類型:
+                <select id="bgType" style="width:110px;">
+                    <option value="transparent">透明 (限PNG)</option>
+                    <option value="color">自訂顏色</option>
+                </select>
+            </label>
+            <label id="bgColorLabel" style="display:none;">背景顏色:
+                <input type="color" id="bgColor" value="#ffffff">
+            </label>
+            <button id="btnExport" class="export-btn">打包成 ZIP 一鍵下載全部</button>
+        </div>
+        <div id="alert"></div>
+    </div>
+
+    <!-- 中央預覽區 -->
+    <div id="main">
+        <div id="toolbar">
+            <span>視角縮放:</span>
+            <input type="range" id="zoomSlider" min="10" max="200" value="100" step="2.5">
+            <span id="zoomVal" style="width: 50px; font-weight:700;">100%</span>
+            <button id="btnResetZoom">100% / 重置位置</button>
+            <span id="layerInfo"></span>
+
+            <div class="tips-wrapper">
+                <div class="tips-icon-btn" id="btnToggleTips" title="點擊查看操作筆記">i</div>
+                <div class="note-popup" id="notePopup">
+                    <h4>操作快捷與說明筆記</h4>
+                    <ul>
+                        <li><b>點擊右側圖檔：</b>切換預覽的圖層。</li>
+                        <li><b>滑鼠滾輪：</b>縮放畫布視角 / 右側列表縮放。</li>
+                        <li><b>中鍵拖曳：</b>移動畫布視角 / 捲動右側列表。</li>
+                        <li><b>統一畫布：</b>取消勾選後，寬高只作用於當前圖層。</li>
+                        <li><b>匯出：</b>依每張圖各自的畫布尺寸打包成 ZIP。</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div id="viewport">
+            <div class="empty-hint">請先在左側載入 PSD 檔案</div>
+            <div id="pan-wrapper">
+                <div id="scale-wrapper">
+                    <div id="preview-stage"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右側圖層庫 -->
+    <div id="right-panel">
+        <div class="panel-header">
+            <h2>群組內圖層列表</h2>
+            <div class="zoom-info">
+                <span id="paletteZoomVal">100% (2列)</span>
+                <button id="btnResetPaletteZoom">重置</button>
+            </div>
+        </div>
+        <div id="palette-viewport">
+            <div id="palette-pan-wrapper">
+                <div id="palette-container"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 右側縮圖最大邊長（列表最大縮放約 75px * 2.2，再留一點給高 DPI）
+    const THUMB_MAX = 240;
+
+    let currentLoadedGroups = {};
+    let currentGroupItems = [];
+    let selectedIndex = 0;
+    let psdCanvasWidth = 0;
+    let psdCanvasHeight = 0;
+
+    const psdInput = document.getElementById('psdInput');
+    const groupSelect = document.getElementById('groupSelect');
+    const useRelativePos = document.getElementById('useRelativePos');
+    const syncCanvasSize = document.getElementById('syncCanvasSize');
+    const autoDetectSize = document.getElementById('autoDetectSize');
+    const autoDetectSizeWrapper = document.getElementById('autoDetectSizeWrapper');
+    const canvasWInput = document.getElementById('canvasW');
+    const canvasHInput = document.getElementById('canvasH');
+    const canvasHint = document.getElementById('canvasHint');
+    const showLabelCheck = document.getElementById('showLabel');
+    const fontSizeInput = document.getElementById('fontSize');
+    const offsetYInput = document.getElementById('offsetY');
+
+    const viewport = document.getElementById('viewport');
+    const panWrapper = document.getElementById('pan-wrapper');
+    const scaleWrapper = document.getElementById('scale-wrapper');
+    const previewStage = document.getElementById('preview-stage');
+    const layerInfo = document.getElementById('layerInfo');
+
+    const paletteViewport = document.getElementById('palette-viewport');
+    const palettePanWrapper = document.getElementById('palette-pan-wrapper');
+    const paletteContainer = document.getElementById('palette-container');
+    const paletteZoomVal = document.getElementById('paletteZoomVal');
+    const btnResetPaletteZoom = document.getElementById('btnResetPaletteZoom');
+
+    const btnToggleTips = document.getElementById('btnToggleTips');
+    const notePopup = document.getElementById('notePopup');
+
+    const alertDiv = document.getElementById('alert');
+    const zoomSlider = document.getElementById('zoomSlider');
+    const zoomVal = document.getElementById('zoomVal');
+    const btnResetZoom = document.getElementById('btnResetZoom');
+
+    const exportFormat = document.getElementById('exportFormat');
+    const bgType = document.getElementById('bgType');
+    const bgColorLabel = document.getElementById('bgColorLabel');
+    const bgColorInput = document.getElementById('bgColor');
+    const btnExport = document.getElementById('btnExport');
+
+    let currentZoom = 100;
+    let panX = 0, panY = 0;
+    let isPanning = false;
+    let startX = 0, startY = 0;
+
+    let paletteZoom = 100;
+    let palettePanY = 0;
+    let isPalettePanning = false;
+    let paletteStartY = 0;
+
+    // 預覽用的固定節點，切換圖層時只替換 canvas，不重建整個舞台
+    const stageLabel = document.createElement('div');
+    stageLabel.className = 'label';
+
+    btnToggleTips.addEventListener('click', (e) => {
+        e.stopPropagation();
+        notePopup.classList.toggle('show');
+    });
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.tips-wrapper')) {
+            notePopup.classList.remove('show');
+        }
+    });
+
+    function updateTransform() {
+        zoomSlider.value = currentZoom;
+        zoomVal.innerText = currentZoom.toFixed(1) + '%';
+        scaleWrapper.style.transform = `scale(${currentZoom / 100})`;
+        panWrapper.style.transform = `translate3d(calc(-50% + ${panX}px), calc(-50% + ${panY}px), 0)`;
+    }
+
+    function updatePaletteTransform() {
+        let cols = 2;
+        if (paletteZoom > 140) cols = 1;
+        else if (paletteZoom < 70) cols = 3;
+
+        paletteZoomVal.innerText = `${Math.round(paletteZoom)}% (${cols}列)`;
+        paletteContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        paletteContainer.style.setProperty('--palette-scale', paletteZoom / 100);
+        palettePanWrapper.style.transform = `translate3d(0px, ${palettePanY}px, 0)`;
+    }
+
+    paletteViewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 10 : -10;
+        paletteZoom = Math.min(Math.max(40, paletteZoom + delta), 220);
+        updatePaletteTransform();
+    }, { passive: false });
+
+    paletteViewport.addEventListener('mousedown', (e) => {
+        if (e.button === 1) {
+            e.preventDefault();
+            isPalettePanning = true;
+            paletteStartY = e.clientY - palettePanY;
+            paletteViewport.classList.add('panning');
+        }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (isPanning) {
+            panX = e.clientX - startX;
+            panY = e.clientY - startY;
+            updateTransform();
+        }
+        if (isPalettePanning) {
+            palettePanY = e.clientY - paletteStartY;
+            updatePaletteTransform();
+        }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+        if (e.button === 1) {
+            if (isPanning) { isPanning = false; viewport.classList.remove('panning'); }
+            if (isPalettePanning) { isPalettePanning = false; paletteViewport.classList.remove('panning'); }
+        }
+    });
+
+    btnResetPaletteZoom.addEventListener('click', () => { paletteZoom = 100; palettePanY = 0; updatePaletteTransform(); });
+    zoomSlider.addEventListener('input', (e) => { currentZoom = parseFloat(e.target.value); updateTransform(); });
+    btnResetZoom.addEventListener('click', () => { currentZoom = 100; panX = 0; panY = 0; updateTransform(); });
+
+    viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 2.5 : -2.5;
+        currentZoom = Math.min(Math.max(10, currentZoom + delta), 200);
+        updateTransform();
+    }, { passive: false });
+
+    viewport.addEventListener('mousedown', (e) => {
+        if (e.button === 1) {
+            e.preventDefault();
+            isPanning = true;
+            startX = e.clientX - panX;
+            startY = e.clientY - panY;
+            viewport.classList.add('panning');
+        }
+    });
+
+    exportFormat.addEventListener('change', updateBgOptionVisibility);
+    bgType.addEventListener('change', updateBgOptionVisibility);
+
+    function updateBgOptionVisibility() {
+        if (exportFormat.value === 'jpeg') {
+            bgType.value = 'color'; bgType.disabled = true; bgColorLabel.style.display = 'flex';
+        } else {
+            bgType.disabled = false; bgColorLabel.style.display = (bgType.value === 'color') ? 'flex' : 'none';
+        }
+    }
+
+    // 產生小縮圖 canvas 給右側列表用，避免整張大圖編碼成 dataURL
+    function makeThumb(src) {
+        const ratio = Math.min(1, THUMB_MAX / Math.max(src.width, src.height));
+        const thumb = document.createElement('canvas');
+        thumb.width = Math.max(1, Math.round(src.width * ratio));
+        thumb.height = Math.max(1, Math.round(src.height * ratio));
+        const ctx = thumb.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(src, 0, 0, thumb.width, thumb.height);
+        return thumb;
+    }
+
+    // 載入 PSD
+    psdInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        alertDiv.innerText = "⏳ 解析 PSD 中...";
+        // 先讓提示文字畫出來，再進入同步解析
+        await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+
+        let psd;
+        try {
+            const buffer = await file.arrayBuffer();
+            psd = agPsd.readPsd(buffer);
+        } catch (err) {
+            console.error(err);
+            alertDiv.innerText = "❌ PSD 解析失敗：" + (err && err.message ? err.message : err);
+            return;
+        }
+
+        psdCanvasWidth = psd.width;
+        psdCanvasHeight = psd.height;
+        currentLoadedGroups = {};
+
+        if (psd.children) {
+            psd.children.forEach(child => {
+                if (child.children) {
+                    const groupName = child.name;
+                    const items = [];
+                    child.children.forEach(layer => {
+                        if (layer.canvas) {
+                            items.push({
+                                name: layer.name,
+                                canvas: layer.canvas,
+                                thumb: makeThumb(layer.canvas),
+                                left: layer.left,
+                                top: layer.top,
+                                width: layer.canvas.width,
+                                height: layer.canvas.height,
+                                canvasW: 300,
+                                canvasH: 300
+                            });
+                        }
+                    });
+                    if (items.length > 0) currentLoadedGroups[groupName] = items;
+                }
+            });
+        }
+
+        populateGroupSelect();
+    });
+
+    function populateGroupSelect() {
+        groupSelect.innerHTML = '';
+        const groupKeys = Object.keys(currentLoadedGroups);
+
+        if (groupKeys.length === 0) {
+            alertDiv.innerText = "❌ 找不到可用的圖層群組！";
+            currentGroupItems = [];
+            paletteContainer.innerHTML = '';
+            previewStage.innerHTML = '';
+            layerInfo.innerText = '';
+            viewport.classList.remove('has-loaded-content');
+            return;
+        }
+
+        alertDiv.innerText = "";
+        groupKeys.forEach(gName => {
+            const opt = document.createElement('option');
+            opt.value = gName;
+            opt.innerText = `${gName} (${currentLoadedGroups[gName].length} 個圖層)`;
+            groupSelect.appendChild(opt);
+        });
+
+        panX = 0; panY = 0; palettePanY = 0; selectedIndex = 0;
+        updateTransform();
+        updatePaletteTransform();
+        viewport.classList.add('has-loaded-content');
+        updateGroupData();
+    }
+
+    groupSelect.addEventListener('change', () => { selectedIndex = 0; updateGroupData(); });
+
+    useRelativePos.addEventListener('change', () => {
+        resetAllItemsCanvasSize();
+        if (!syncCanvasSize.checked && autoDetectSize.checked) {
+            applyAutoDetectSizeToAll();
+        }
+        syncUIWithCurrentItem();
+        renderStage();
+    });
+
+    syncCanvasSize.addEventListener('change', () => {
+        if (syncCanvasSize.checked) {
+            canvasHint.innerText = "勾選「統一」時，調整將會同步更新群組內所有圖層";
+            autoDetectSizeWrapper.style.display = 'none';
+            autoDetectSize.checked = false;
+            canvasWInput.disabled = false;
+            canvasHInput.disabled = false;
+            const currentItem = currentGroupItems[selectedIndex];
+            if (currentItem) {
+                applyCanvasSizeToAll(currentItem.canvasW, currentItem.canvasH);
+            }
+        } else {
+            canvasHint.innerText = "未勾選「統一」時，調整僅作用於當前選取的單一圖層";
+            autoDetectSizeWrapper.style.display = 'flex';
+        }
+        syncUIWithCurrentItem();
+        renderStage();
+    });
+
+    autoDetectSize.addEventListener('change', () => {
+        if (autoDetectSize.checked) {
+            canvasHint.innerText = "已啟用自動偵測：每張圖的畫布尺寸將自動設為該圖片本身的尺寸";
+            applyAutoDetectSizeToAll();
+            canvasWInput.disabled = true;
+            canvasHInput.disabled = true;
+        } else {
+            canvasHint.innerText = "未勾選「統一」時，調整僅作用於當前選取的單一圖層";
+            canvasWInput.disabled = false;
+            canvasHInput.disabled = false;
+        }
+        syncUIWithCurrentItem();
+        renderStage();
+    });
+
+    function applyCanvasSizeToAll(w, h) {
+        currentGroupItems.forEach(item => {
+            item.canvasW = w;
+            item.canvasH = h;
+        });
+    }
+
+    function applyAutoDetectSizeToAll() {
+        currentGroupItems.forEach(item => {
+            item.canvasW = item.width;
+            item.canvasH = item.height;
+        });
+    }
+
+    function readSizeInput(input) {
+        return Math.max(1, parseInt(input.value) || 10);
+    }
+
+    canvasWInput.addEventListener('input', () => {
+        const val = readSizeInput(canvasWInput);
+        const item = currentGroupItems[selectedIndex];
+        if (!item) return;
+
+        if (syncCanvasSize.checked) {
+            applyCanvasSizeToAll(val, item.canvasH);
+        } else {
+            item.canvasW = val;
+        }
+        renderStage();
+    });
+
+    canvasHInput.addEventListener('input', () => {
+        const val = readSizeInput(canvasHInput);
+        const item = currentGroupItems[selectedIndex];
+        if (!item) return;
+
+        if (syncCanvasSize.checked) {
+            applyCanvasSizeToAll(item.canvasW, val);
+        } else {
+            item.canvasH = val;
+        }
+        renderStage();
+    });
+
+    [showLabelCheck, fontSizeInput, offsetYInput].forEach(el => {
+        el.addEventListener('input', renderStage);
+    });
+
+    function resetAllItemsCanvasSize() {
+        if (currentGroupItems.length === 0) return;
+
+        let defaultW = 300;
+        let defaultH = 300;
+
+        if (useRelativePos.checked) {
+            defaultW = psdCanvasWidth;
+            defaultH = psdCanvasHeight;
+        } else {
+            let maxW = 0;
+            let maxH = 0;
+
+            currentGroupItems.forEach(item => {
+                if (item.width > maxW) maxW = item.width;
+                if (item.height > maxH) maxH = item.height;
+            });
+
+            defaultW = maxW > 0 ? maxW : 300;
+            defaultH = maxH > 0 ? maxH : 300;
+        }
+
+        applyCanvasSizeToAll(defaultW, defaultH);
+    }
+
+    function updateGroupData() {
+        const groupName = groupSelect.value;
+        if (!groupName || !currentLoadedGroups[groupName]) return;
+
+        currentGroupItems = currentLoadedGroups[groupName];
+        resetAllItemsCanvasSize();
+        if (!syncCanvasSize.checked && autoDetectSize.checked) {
+            applyAutoDetectSizeToAll();
+        }
+        renderPalette();
+        syncUIWithCurrentItem();
+        renderStage();
+    }
+
+    function syncUIWithCurrentItem() {
+        const item = currentGroupItems[selectedIndex];
+        if (!item) return;
+
+        canvasWInput.value = item.canvasW;
+        canvasHInput.value = item.canvasH;
+    }
+
+    function renderPalette() {
+        const frag = document.createDocumentFragment();
+        currentGroupItems.forEach((item, idx) => {
+            const div = document.createElement('div');
+            div.className = `palette-item ${idx === selectedIndex ? 'active' : ''}`;
+            div.dataset.index = idx;
+
+            const imgBox = document.createElement('div');
+            imgBox.className = 'palette-img-box';
+            imgBox.appendChild(item.thumb);
+
+            const label = document.createElement('span');
+            label.innerText = item.name;
+
+            div.appendChild(imgBox);
+            div.appendChild(label);
+            frag.appendChild(div);
+        });
+        paletteContainer.innerHTML = '';
+        paletteContainer.appendChild(frag);
+    }
+
+    // 事件委派：整個列表只掛一個 click
+    paletteContainer.addEventListener('click', (e) => {
+        const el = e.target.closest('.palette-item');
+        if (!el) return;
+        const idx = parseInt(el.dataset.index);
+        if (idx === selectedIndex) return;
+        selectedIndex = idx;
+        updatePaletteSelection();
+        syncUIWithCurrentItem();
+        renderStage();
+    });
+
+    function updatePaletteSelection() {
+        const items = paletteContainer.children;
+        for (let i = 0; i < items.length; i++) {
+            items[i].classList.toggle('active', i === selectedIndex);
+        }
+    }
+
+    function computeOffset(item, cWidth, cHeight) {
+        if (useRelativePos.checked) {
+            const dx = (item.left + item.width / 2) - (psdCanvasWidth / 2);
+            const dy = (item.top + item.height / 2) - (psdCanvasHeight / 2);
+            return {
+                x: (cWidth / 2) + dx - (item.width / 2),
+                y: (cHeight / 2) + dy - (item.height / 2)
+            };
+        }
+        return {
+            x: (cWidth - item.width) / 2,
+            y: (cHeight - item.height) / 2
+        };
+    }
+
+    function renderStage() {
+        const item = currentGroupItems[selectedIndex];
+        if (!item) return;
+
+        const cWidth = item.canvasW;
+        const cHeight = item.canvasH;
+
+        previewStage.style.width = cWidth + 'px';
+        previewStage.style.height = cHeight + 'px';
+
+        // 直接顯示圖層原始 canvas（不需要先轉成圖片）
+        const layerCanvas = item.canvas;
+        if (previewStage.firstChild !== layerCanvas) {
+            previewStage.innerHTML = '';
+            previewStage.appendChild(layerCanvas);
+        }
+
+        const off = computeOffset(item, cWidth, cHeight);
+        layerCanvas.style.left = off.x + 'px';
+        layerCanvas.style.top = off.y + 'px';
+        layerCanvas.style.width = item.width + 'px';
+        layerCanvas.style.height = item.height + 'px';
+
+        if (showLabelCheck.checked) {
+            stageLabel.innerText = item.name;
+            stageLabel.style.setProperty('--offset-y', offsetYInput.value + 'px');
+            stageLabel.style.setProperty('--font-size', fontSizeInput.value + 'px');
+            previewStage.appendChild(stageLabel);
+        } else if (stageLabel.parentNode) {
+            stageLabel.remove();
+        }
+
+        layerInfo.innerHTML = '';
+        const b = document.createElement('b');
+        b.innerText = item.name;
+        layerInfo.append(`${selectedIndex + 1} / ${currentGroupItems.length}　`, b, `　${cWidth} × ${cHeight}`);
+    }
+
+    // 打包成 ZIP 一鍵下載
+    btnExport.addEventListener('click', async () => {
+        if (currentGroupItems.length === 0) {
+            alert('沒有可輸出的圖層！');
+            return;
+        }
+
+        const isJpeg = exportFormat.value === 'jpeg';
+        const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
+        const ext = isJpeg ? 'jpg' : 'png';
+        const groupName = groupSelect.value || "export_layers";
+
+        const nameCounts = {};
+        currentGroupItems.forEach(item => {
+            nameCounts[item.name] = (nameCounts[item.name] || 0) + 1;
+        });
+
+        const nameTracker = {};
+        const zip = new JSZip();
+        const total = currentGroupItems.length;
+
+        btnExport.disabled = true;
+        try {
+            const exportCanvas = document.createElement('canvas');
+            const ctx = exportCanvas.getContext('2d');
+
+            for (let i = 0; i < total; i++) {
+                alertDiv.innerText = `⏳ 正在產生圖片 ${i + 1} / ${total}，請稍候...`;
+
+                const item = currentGroupItems[i];
+                const cWidth = item.canvasW;
+                const cHeight = item.canvasH;
+
+                // 重設尺寸同時會清空畫布
+                exportCanvas.width = cWidth;
+                exportCanvas.height = cHeight;
+
+                if (bgType.value === 'color' || isJpeg) {
+                    ctx.fillStyle = bgColorInput.value;
+                    ctx.fillRect(0, 0, cWidth, cHeight);
+                }
+
+                const off = computeOffset(item, cWidth, cHeight);
+                ctx.drawImage(item.canvas, off.x, off.y, item.width, item.height);
+
+                if (showLabelCheck.checked) {
+                    const fontSize = parseInt(fontSizeInput.value) || 14;
+                    const offsetY = parseInt(offsetYInput.value) || 12;
+
+                    ctx.font = `bold ${fontSize}px sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+                    const tx = cWidth / 2;
+                    const ty = cHeight - offsetY;
+
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 3;
+                    ctx.strokeText(item.name, tx, ty);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(item.name, tx, ty);
+                }
+
+                let fileName = item.name;
+                if (nameCounts[item.name] > 1) {
+                    if (nameTracker[item.name] === undefined) {
+                        nameTracker[item.name] = 0;
+                    } else {
+                        nameTracker[item.name]++;
+                    }
+                    const seq = String(nameTracker[item.name]).padStart(2, '0');
+                    fileName = `${item.name}${seq}`;
+                }
+
+                // 直接用 Blob 放入 Zip（比 dataURL + Base64 省記憶體也較快，且不會卡住畫面）
+                const blob = await new Promise(resolve => exportCanvas.toBlob(resolve, mimeType, 0.95));
+                zip.file(`${fileName}.${ext}`, blob);
+            }
+
+            alertDiv.innerText = "⚡ 正在打包成 ZIP 壓縮檔...";
+            const content = await zip.generateAsync({ type: "blob" }, (meta) => {
+                alertDiv.innerText = `⚡ 正在打包成 ZIP 壓縮檔... ${Math.round(meta.percent)}%`;
+            });
+            saveAs(content, `${groupName}.zip`);
+
+            alertDiv.innerText = "✅ 壓縮檔已下載完成！";
+        } catch (err) {
+            console.error(err);
+            alertDiv.innerText = "❌ 匯出失敗：" + (err && err.message ? err.message : err);
+        } finally {
+            btnExport.disabled = false;
+        }
+    });
+
+    updateBgOptionVisibility();
+    updateTransform();
+    updatePaletteTransform();
+</script>
+</body>
+</html>
