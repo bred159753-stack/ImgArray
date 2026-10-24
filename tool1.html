@@ -310,7 +310,8 @@
             font-weight: 600; 
             border-radius: var(--radius-pill); 
         }
-        #toolbar button:hover { background: var(--accent-white); color: var(--accent-black); }
+        #toolbar button:hover:not(:disabled) { background: var(--accent-white); color: var(--accent-black); }
+        #toolbar button:disabled { cursor: not-allowed; opacity: 0.4; }
 
         .tips-wrapper { margin-left: auto; position: relative; }
         .tips-icon-btn { 
@@ -646,6 +647,8 @@
             <input type="range" id="zoomSlider" min="1" max="200" value="100" step="1">
             <span id="zoomVal" style="width: 50px; font-weight:700;">100%</span>
             <button id="btnResetZoom" style="width: auto; font-size: 11px;">100% / 重置位置</button>
+            <button id="btnUndo" title="復原 (Ctrl+Z)" style="width: auto; font-size: 11px;" disabled>復原</button>
+            <button id="btnRedo" title="重做 (Ctrl+Y)" style="width: auto; font-size: 11px;" disabled>重做</button>
             
             <div class="tips-wrapper">
                 <div class="tips-icon-btn" id="btnToggleTips" title="點擊查看操作筆記">i</div>
@@ -659,6 +662,7 @@
                         <li><b>Ctrl + 中鍵拖曳：</b>微調相對 XY 位移。</li>
                         <li><b>Ctrl + 滾輪：</b>獨立縮放選取圖案。</li>
                         <li><b>滾輪 / 中鍵拖曳：</b>平移與縮放畫布視角。</li>
+                        <li><b>Ctrl + Z / Ctrl + Y：</b>復原、重做排列與設定變更（最多 100 步）。</li>
                     </ul>
                 </div>
             </div>
@@ -868,6 +872,7 @@
         alertDiv.innerText = '';
         viewport.classList.remove('has-loaded-content');
         updateItemScaleUI();
+        resetHistory();
     }
 
     function updateTransform() {
@@ -1229,6 +1234,7 @@
 
         panX = 0; panY = 0; palettePanY = 0; selectedTileIndices = [];
         updateGridData();
+        resetHistory();
     }
 
     function renderFolderTree() {
@@ -1708,6 +1714,7 @@
     }
 
     function requestRenderGrid() {
+        scheduleCommit();
         if (!rafPending) {
             rafPending = true;
             requestAnimationFrame(() => {
@@ -1776,6 +1783,7 @@
 
     // 只更新指定格子的 img，不重建整個格子 DOM（拖動縮放/位移時使用）
     function updateTileImgs(indices) {
+        scheduleCommit();
         if (rafPending) return; // 已排程整體重繪，交給它處理
         const isAutoFit = autoFitLayoutCheck.checked;
         const isAlphaLayout = alphaLayoutCheck.checked;
@@ -2101,6 +2109,198 @@
         link.download = `Arrangement_${Date.now()}.${isJpeg ? 'jpg' : 'png'}`;
         link.href = exportCanvas.toDataURL(mimeType, 0.95);
         link.click();
+    });
+
+    // ---------- 復原 / 重做 ----------
+    // 每次排列或設定變更後（停頓 400ms 合併成一步）把「目前狀態快照」推進復原堆疊。
+    // 快照只淺拷貝格子資料：圖片 canvas 與縮圖網址都是共用參考，不會多佔圖片記憶體。
+    const HISTORY_LIMIT = 100;
+    const undoStack = [];
+    const redoStack = [];
+    let committedState = null;
+    let commitTimer = null;
+    const btnUndo = document.getElementById('btnUndo');
+    const btnRedo = document.getElementById('btnRedo');
+
+    // 用 canvas 物件當圖片身分證，給比對 key 使用
+    const canvasIds = new WeakMap();
+    let canvasIdCounter = 0;
+    function canvasId(canvas) {
+        if (!canvas) return null;
+        if (!canvasIds.has(canvas)) canvasIds.set(canvas, ++canvasIdCounter);
+        return canvasIds.get(canvas);
+    }
+
+    function cloneCells(cells) {
+        return cells.map(cell => ({ ...cell, item: cell.item ? { ...cell.item } : null }));
+    }
+
+    function readControls() {
+        return {
+            cols: colsInput.value,
+            rows: rowsInput.value,
+            tileW: tileWInput.value,
+            tileH: tileHInput.value,
+            gapX: gapXInput.value,
+            gapY: gapYInput.value,
+            showLabel: showLabelCheck.checked,
+            fontSize: fontSizeInput.value,
+            offsetY: offsetYInput.value,
+            alphaLayout: alphaLayoutCheck.checked,
+            irregularLayout: irregularLayoutCheck.checked,
+            orderByName: orderByNameCheck.checked,
+            autoFitLayout: autoFitLayoutCheck.checked,
+            autoFitMode: document.querySelector('input[name="autoFitMode"]:checked')?.value || 'A',
+            exportFormat: exportFormat.value,
+            bgType: bgType.value,
+            bgColor: bgColorInput.value
+        };
+    }
+
+    function takeSnapshot() {
+        return {
+            group: groupSelect.value,
+            excluded: [...excludedIds],
+            currentItems: currentItems.slice(),
+            cells: cloneCells(gridData),
+            selected: selectedTileIndices.slice(),
+            controls: readControls()
+        };
+    }
+
+    // 比對用的 key：不含選取格（單純點選格子不算一步）
+    function snapshotKey(snap) {
+        return JSON.stringify([
+            snap.group,
+            snap.excluded.slice().sort(),
+            snap.controls,
+            snap.cells.map(c => [
+                c.item ? canvasId(c.item.canvas) : null,
+                c.item ? [c.item.scale, c.item.offsetX, c.item.offsetY] : null,
+                c.colSpan, c.rowSpan, c.isCovered, c.masterIndex
+            ])
+        ]);
+    }
+
+    function updateHistoryButtons() {
+        btnUndo.disabled = undoStack.length === 0;
+        btnRedo.disabled = redoStack.length === 0;
+    }
+
+    function resetHistory() {
+        clearTimeout(commitTimer);
+        commitTimer = null;
+        undoStack.length = 0;
+        redoStack.length = 0;
+        committedState = gridData.length ? takeSnapshot() : null;
+        updateHistoryButtons();
+    }
+
+    function scheduleCommit() {
+        if (!committedState) return;
+        clearTimeout(commitTimer);
+        commitTimer = setTimeout(commitNow, 400);
+    }
+
+    function commitNow() {
+        clearTimeout(commitTimer);
+        commitTimer = null;
+        if (!committedState) return;
+        // Ctrl+中鍵拖曳還沒放開時先不記，放開後再記成一步
+        if (isItemDragging) { scheduleCommit(); return; }
+        const now = takeSnapshot();
+        if (snapshotKey(now) === snapshotKey(committedState)) {
+            committedState = now; // 只更新選取格
+            return;
+        }
+        undoStack.push(committedState);
+        if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+        redoStack.length = 0;
+        committedState = now;
+        updateHistoryButtons();
+    }
+
+    function restoreSnapshot(snap) {
+        const cur = committedState;
+        const c = snap.controls;
+        colsInput.value = c.cols;
+        rowsInput.value = c.rows;
+        tileWInput.value = c.tileW;
+        tileHInput.value = c.tileH;
+        gapXInput.value = c.gapX;
+        gapYInput.value = c.gapY;
+        showLabelCheck.checked = c.showLabel;
+        fontSizeInput.value = c.fontSize;
+        offsetYInput.value = c.offsetY;
+        alphaLayoutCheck.checked = c.alphaLayout;
+        irregularLayoutCheck.checked = c.irregularLayout;
+        orderByNameCheck.checked = c.orderByName;
+        autoFitLayoutCheck.checked = c.autoFitLayout;
+        autoFitModeRadios.forEach(r => { r.checked = r.value === c.autoFitMode; });
+        autoFitModeContainer.style.display = c.autoFitLayout ? 'block' : 'none';
+        exportFormat.value = c.exportFormat;
+        bgType.value = c.bgType;
+        bgColorInput.value = c.bgColor;
+        updateBgOptionVisibility();
+
+        // 資料夾或排除清單不同時，重建來源清單與右側圖庫
+        const sourceChanged = !cur || cur.group !== snap.group ||
+            JSON.stringify(cur.excluded.slice().sort()) !== JSON.stringify(snap.excluded.slice().sort()) ||
+            cur.controls.orderByName !== c.orderByName;
+        groupSelect.value = snap.group;
+        excludedIds = new Set(snap.excluded);
+        if (sourceChanged) {
+            refreshCurrentGroup();
+            renderFolderTree();
+            const items = currentLoadedGroups[snap.group] || [];
+            renderPalette(items);
+            viewport.classList.toggle('has-loaded-content', items.length > 0);
+        }
+
+        currentItems = snap.currentItems.slice();
+        gridData = cloneCells(snap.cells);
+        selectedTileIndices = snap.selected.filter(i => i < gridData.length);
+
+        updateItemScaleUI();
+        renderGrid();
+        committedState = takeSnapshot();
+        clearTimeout(commitTimer);
+        commitTimer = null;
+    }
+
+    function undo() {
+        commitNow();
+        if (!undoStack.length) return;
+        redoStack.push(committedState);
+        restoreSnapshot(undoStack.pop());
+        updateHistoryButtons();
+        alertDiv.innerText = `↩️ 已復原（還可復原 ${undoStack.length} 步）`;
+    }
+
+    function redo() {
+        commitNow();
+        if (!redoStack.length) return;
+        undoStack.push(committedState);
+        restoreSnapshot(redoStack.pop());
+        updateHistoryButtons();
+        alertDiv.innerText = `↪️ 已重做（還可重做 ${redoStack.length} 步）`;
+    }
+
+    btnUndo.addEventListener('click', undo);
+    btnRedo.addEventListener('click', redo);
+
+    window.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        const key = e.key.toLowerCase();
+        const isUndo = key === 'z' && !e.shiftKey;
+        const isRedo = key === 'y' || (key === 'z' && e.shiftKey);
+        if (!isUndo && !isRedo) return;
+        const el = document.activeElement;
+        if (el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type === 'text'))) return;
+        e.preventDefault();
+        // 正在編輯數字欄位時先離開欄位，讓剛輸入的值先記成一步
+        if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT')) el.blur();
+        if (isUndo) undo(); else redo();
     });
 
     updateBgOptionVisibility();

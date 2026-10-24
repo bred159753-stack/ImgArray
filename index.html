@@ -151,7 +151,9 @@
     // ⚙️ 工具設定清單
     const toolsConfig = [
         { id: 1, name: "工具 1：PSD 排列與匯出", file: "tool1.html" },
-        { id: 2, name: "工具 2：資料夾圖檔排列", file: "tool2.html" }
+        { id: 2, name: "工具 2：資料夾圖檔排列", file: "tool2.html" },
+        { id: 3, name: "工具 3：單圖框選切圖", file: "tool3.html" },
+        { id: 4, name: "工具 4：批次 AI 去背", file: "tool4.html" }
     ];
 
     const tabBar = document.getElementById('tab-bar');
@@ -202,6 +204,15 @@
         // 強制更新 iframe 頁面
         toolFrame.src = targetTool.file;
     }
+
+    // 工具頁要求切換頁籤（例如 Tool 3 把切圖送到 Tool 4）
+    window.addEventListener('message', (e) => {
+        if (e.source !== toolFrame.contentWindow) return;
+        const data = e.data;
+        if (!data || data.type !== 'imgarray:open-tool') return;
+        const target = toolsConfig.find(t => t.file === data.file);
+        if (target) switchTab(target.id);
+    });
 
     // 確保 DOM 載入後執行
     document.addEventListener('DOMContentLoaded', initTabs);

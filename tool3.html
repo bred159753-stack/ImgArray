@@ -1,0 +1,1922 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>單圖框選切圖工具 (Tool 3)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        :root {
+            /* Warm Earth & Dusk Atmospheric Palette (與 tool1 / tool2 一致) */
+            --card-glass: rgba(255, 255, 255, 0.07);
+            --border-glass: rgba(255, 255, 255, 0.18);
+            --border-glass-light: rgba(255, 255, 255, 0.28);
+            --border-subtle: rgba(255, 255, 255, 0.08);
+
+            --text-primary: #f5f2ee;
+            --text-secondary: #cbbfb6;
+            --text-muted: #8e837a;
+
+            --accent-black: #0d0c0e;
+            --accent-white: #ffffff;
+            --accent-warm: #d3bead;
+            --accent-gold: #e2b067;
+            --accent-gold-soft: rgba(226, 176, 103, 0.2);
+            --danger-red: #e05d53;
+
+            --font-main: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", sans-serif;
+            --radius-pill: 9999px;
+            --radius-xl: 26px;
+            --radius-lg: 18px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: var(--font-main);
+            display: flex;
+            height: 100vh;
+            color: var(--text-primary);
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+            background-color: #1a1518;
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(200, 160, 140, 0.25) 0%, rgba(0, 0, 0, 0) 70%),
+                radial-gradient(ellipse 60% 40% at 85% 90%, rgba(160, 110, 95, 0.20) 0%, rgba(0, 0, 0, 0) 70%),
+                linear-gradient(135deg, rgba(18, 14, 18, 0.70) 0%, rgba(10, 8, 10, 0.85) 100%),
+                url('image/bg.jpg'),
+                linear-gradient(135deg, #2a2225 0%, #131013 100%);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        #app-body {
+            display: flex;
+            width: calc(100vw - 32px);
+            height: calc(100vh - 32px);
+            margin: 16px;
+            border-radius: var(--radius-xl);
+            overflow: hidden;
+            background: rgba(20, 16, 18, 0.25);
+            border: 1px solid var(--border-glass-light);
+            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.75), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+            position: relative;
+        }
+
+        /* 左側控制面板 */
+        #sidebar {
+            width: 350px;
+            background: rgba(20, 16, 18, 0.45);
+            backdrop-filter: blur(12px) saturate(130%);
+            -webkit-backdrop-filter: blur(12px) saturate(130%);
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            border-right: 1px solid var(--border-subtle);
+            flex-shrink: 0;
+            z-index: 10;
+            box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.08);
+        }
+        #sidebar::-webkit-scrollbar { width: 5px; height: 5px; }
+        #sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 999px; }
+
+        #sidebar .app-title {
+            font-size: 14px;
+            font-weight: 700;
+            padding: 4px 4px 12px;
+            border-bottom: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        #sidebar .app-title .brand-badge {
+            font-size: 10px;
+            font-weight: 800;
+            background: var(--accent-white);
+            color: var(--accent-black);
+            padding: 2px 8px;
+            border-radius: var(--radius-pill);
+            letter-spacing: 0.06em;
+        }
+
+        .control-group {
+            background: var(--card-glass);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            padding: 14px 16px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-glass);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 24px rgba(0, 0, 0, 0.15);
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+        .control-group:hover { border-color: rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.09); }
+
+        .control-group h3 {
+            font-size: 11px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .control-group h3 .num-tag { font-size: 13px; font-weight: 800; color: var(--accent-warm); letter-spacing: -0.02em; }
+
+        label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            margin: 8px 0;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        input[type="number"], input[type="text"], select {
+            width: 85px;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--border-glass);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-family: inherit;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        input[type="text"] { width: 100%; }
+        input[type="number"]:focus, input[type="text"]:focus, select:focus {
+            outline: none;
+            border-color: var(--accent-white);
+            background: rgba(0, 0, 0, 0.55);
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
+        }
+        input:disabled, select:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        input[type="range"] { accent-color: var(--accent-white); cursor: pointer; }
+        input[type="checkbox"] { accent-color: var(--accent-white); cursor: pointer; width: 14px; height: 14px; flex-shrink: 0; }
+
+        input[type="file"] { font-family: inherit; font-size: 11px; color: var(--text-secondary); }
+        input[type="file"]::file-selector-button {
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 700;
+            background: var(--accent-black);
+            color: var(--accent-white);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-pill);
+            padding: 6px 14px;
+            margin-right: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        input[type="file"]::file-selector-button:hover { background: var(--accent-white); color: var(--accent-black); transform: translateY(-1px); }
+
+        .row-inputs { display: flex; gap: 8px; }
+        .row-inputs label { flex: 1; margin: 4px 0; }
+        .row-inputs input[type="number"] { width: 78px; }
+
+        .check-row { color: var(--text-primary); font-weight: 600; cursor: pointer; gap: 10px; }
+
+        .hint { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+
+        button {
+            background: var(--accent-white);
+            color: var(--accent-black);
+            border: 1px solid transparent;
+            padding: 10px 16px;
+            border-radius: var(--radius-pill);
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            width: 100%;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        button:hover { background: var(--accent-warm); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3); }
+        button:active { transform: translateY(1px); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        button.export-btn {
+            background: var(--accent-black);
+            color: var(--accent-white);
+            border: 1px solid var(--border-glass-light);
+            margin-top: 8px;
+        }
+        button.export-btn:hover:not(:disabled) { background: var(--accent-white); color: var(--accent-black); }
+        button.danger-btn { background: transparent; color: var(--danger-red); border: 1px solid rgba(224, 93, 83, 0.5); margin-top: 8px; box-shadow: none; }
+        button.danger-btn:hover:not(:disabled) { background: var(--danger-red); color: var(--accent-white); }
+
+        .btn-row { display: flex; gap: 8px; }
+        .btn-row button { margin-top: 8px; padding: 8px 10px; }
+
+        /* 中央預覽區 */
+        #main { flex: 1; display: flex; flex-direction: column; background: transparent; overflow: hidden; position: relative; min-width: 0; }
+
+        #toolbar {
+            background: rgba(20, 16, 18, 0.45);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 0 20px;
+            height: 54px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--border-subtle);
+            font-size: 12px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+            z-index: 10;
+            position: relative;
+        }
+        #toolbar input[type="range"] { flex: 1; max-width: 140px; }
+        #toolbar button {
+            width: auto;
+            padding: 5px 14px;
+            font-size: 11px;
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            border: 1px solid var(--border-glass);
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        #toolbar button:hover:not(:disabled) { background: var(--accent-white); color: var(--accent-black); }
+        #boxCountInfo { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+        #boxCountInfo b { color: var(--text-primary); }
+        #boxCountInfo.full b { color: var(--accent-gold); }
+
+        .tips-wrapper { margin-left: auto; position: relative; }
+        .tips-icon-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-glass);
+            color: var(--accent-white);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 800;
+            transition: all 0.2s ease;
+        }
+        .tips-icon-btn:hover { background: var(--accent-white); color: var(--accent-black); }
+
+        .note-popup {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 42px;
+            background: rgba(25, 20, 22, 0.92);
+            backdrop-filter: blur(24px);
+            border: 1px solid var(--border-glass-light);
+            border-radius: var(--radius-lg);
+            padding: 16px 18px;
+            width: 340px;
+            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.7);
+            z-index: 100;
+            font-size: 12px;
+            line-height: 1.7;
+        }
+        .note-popup.show { display: block; }
+        .note-popup h4 { font-size: 11px; font-weight: 700; color: var(--accent-warm); text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px; margin-bottom: 10px; }
+        .note-popup ul { list-style: none; }
+        .note-popup li { margin-bottom: 6px; display: flex; align-items: flex-start; gap: 6px; color: var(--text-secondary); }
+        .note-popup li b { color: var(--text-primary); white-space: nowrap; min-width: 92px; }
+
+        /* 中央畫布視域 */
+        #viewport {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            background: transparent;
+            transition: background-color 0.4s ease;
+        }
+        #viewport.has-loaded-content {
+            background-color: rgba(20, 16, 18, 0.78);
+            background-image:
+                radial-gradient(circle at 50% 50%, rgba(200, 160, 140, 0.08) 0, rgba(0,0,0,0) 65%),
+                radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 0);
+            background-size: auto, 24px 24px;
+        }
+        #viewport.drag-over { box-shadow: inset 0 0 0 3px var(--accent-gold); }
+        #stageCanvas { position: absolute; inset: 0; display: block; touch-action: none; }
+
+        .empty-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 13px; letter-spacing: 0.04em; pointer-events: none; text-align: center; line-height: 1.8; }
+        #viewport.has-loaded-content .empty-hint { display: none; }
+
+        /* 右側框選清單 */
+        #right-panel {
+            width: 270px;
+            background: rgba(20, 16, 18, 0.45);
+            backdrop-filter: blur(12px) saturate(130%);
+            -webkit-backdrop-filter: blur(12px) saturate(130%);
+            border-left: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            z-index: 10;
+            overflow: hidden;
+            box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.08);
+        }
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 0 16px;
+            height: 54px;
+            flex-shrink: 0;
+        }
+        .panel-header h2 { font-size: 12px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.06em; }
+        .panel-header span { font-size: 11px; color: var(--text-muted); }
+
+        #box-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            align-content: start;
+        }
+        #box-list::-webkit-scrollbar { width: 5px; }
+        #box-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 999px; }
+
+        .box-item {
+            background: var(--card-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-md);
+            padding: 8px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+            user-select: none;
+            min-width: 0;
+        }
+        .box-item:hover { border-color: var(--accent-white); transform: translateY(-2px); background: rgba(255, 255, 255, 0.16); }
+        .box-item.active {
+            border: 2px solid var(--accent-gold);
+            background: rgba(226, 176, 103, 0.12);
+            box-shadow: 0 0 0 4px var(--accent-gold-soft);
+        }
+        .box-thumb {
+            width: 100%;
+            height: 75px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border-radius: var(--radius-sm);
+            background-color: rgba(0,0,0,0.25);
+        }
+        .box-thumb canvas { max-width: 100%; max-height: 100%; pointer-events: none; }
+        .box-item .box-name { font-size: 10px; color: var(--text-secondary); margin-top: 6px; text-align: center; word-break: break-all; font-weight: 600; max-width: 100%; }
+        .box-item .box-size { font-size: 9px; color: var(--text-muted); }
+        .box-item.active .box-name { color: var(--text-primary); }
+
+        #alert { color: var(--accent-gold); font-size: 11px; line-height: 1.4; font-weight: 600; min-height: 1em; }
+    </style>
+</head>
+<body>
+
+<div id="app-body">
+    <!-- 左側面板 -->
+    <div id="sidebar">
+        <div class="app-title">
+            <span>單圖框選切圖工具</span>
+            <span class="brand-badge">Tool 3</span>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">01</span> 載入圖片</h3>
+            <input type="file" id="imageInput" accept="image/*" style="width:100%">
+            <div class="hint">也可以直接把圖片拖進中間畫布，或 Ctrl+V 貼上剪貼簿圖片。</div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">02</span> 框選設定</h3>
+            <label>框選數量上限 <input type="number" id="maxBoxes" value="50" min="1" max="500"></label>
+            <label class="check-row">顯示框名稱 <input type="checkbox" id="showLabels" checked></label>
+            <label class="check-row">遮暗未框選區域 <input type="checkbox" id="dimOutside"></label>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">03</span> 選取的框</h3>
+            <label style="display:block">名稱
+                <input type="text" id="boxName" placeholder="未選取" disabled style="margin-top:6px">
+            </label>
+            <div class="row-inputs">
+                <label>X <input type="number" id="boxX" disabled></label>
+                <label>Y <input type="number" id="boxY" disabled></label>
+            </div>
+            <div class="row-inputs">
+                <label>寬 <input type="number" id="boxW" min="1" disabled></label>
+                <label>高 <input type="number" id="boxH" min="1" disabled></label>
+            </div>
+            <div class="btn-row">
+                <button class="export-btn" id="duplicateBtn" disabled>複製此框</button>
+                <button class="danger-btn" id="deleteBtn" disabled>刪除</button>
+            </div>
+            <div class="hint">先點一下選取，再拖曳框內可移動、拖曳八個控制點可調整大小；Ctrl+D 或 Alt+拖曳可複製。</div>
+        </div>
+
+        <div class="control-group" id="arrayGroup">
+            <h3><span class="num-tag">04</span> 陣列複製</h3>
+            <div class="row-inputs">
+                <label>欄數 <input type="number" id="arrCols" value="1" min="1" max="100"></label>
+                <label>列數 <input type="number" id="arrRows" value="1" min="1" max="100"></label>
+            </div>
+            <div class="row-inputs">
+                <label>間距 X <input type="number" id="arrGapX" value="0"></label>
+                <label>間距 Y <input type="number" id="arrGapY" value="0"></label>
+            </div>
+            <label class="check-row">依序重新命名 (名稱_列_欄) <input type="checkbox" id="arrRename" checked></label>
+            <button id="arrayBtn" disabled>以選取框產生陣列</button>
+            <div class="hint">先框好左上角第一格並選取它，填入欄數（橫向）、列數（直向）與格子之間的間距（可為負數）。游標移到這區時，畫布會用紫色虛線預覽。</div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">05</span> AI 建議框</h3>
+            <label>模型
+                <select id="aiModel" style="width:170px">
+                    <option value="Xenova/owlvit-base-patch32">OWL-ViT（較快）</option>
+                    <option value="Xenova/owlv2-base-patch16-ensemble">OWLv2（較準、較慢）</option>
+                </select>
+            </label>
+            <label style="display:block">要找的東西（英文，逗號分隔）
+                <input type="text" id="aiLabels" value="icon, button, number, logo, character, frame" style="margin-top:6px">
+            </label>
+            <label class="check-row">分區偵測（小物件較準，較慢） <input type="checkbox" id="aiTiled" checked></label>
+            <label class="check-row">只偵測選取框範圍內 <input type="checkbox" id="aiInSelection"></label>
+            <label>信心門檻 <span style="display:flex; align-items:center; gap:8px;"><input type="range" id="aiThreshold" min="2" max="60" value="10" style="width:110px"><b id="aiThresholdVal" style="width:32px; color:var(--text-primary)">0.10</b></span></label>
+            <button id="aiDetectBtn" disabled>開始偵測</button>
+            <div id="aiStatus" class="hint"></div>
+            <div class="btn-row">
+                <button class="export-btn" id="aiAcceptAllBtn" disabled>全部採用</button>
+                <button class="danger-btn" id="aiClearBtn" disabled>清除建議</button>
+            </div>
+            <div class="hint">建議框以青色虛線顯示，<b>雙擊</b>建議框即可採用成正式框；和現有框重疊的建議會自動隱藏。第一次使用需下載模型（約 150 到 450MB），之後瀏覽器會快取。</div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">06</span> 匯出</h3>
+            <label>檔名前綴 <input type="text" id="filePrefix" placeholder="(可留空)" style="width:140px"></label>
+            <label class="check-row">ZIP 內附框設定 layout.json <input type="checkbox" id="includeLayout" checked></label>
+            <button id="exportZipBtn" disabled>匯出所有切圖 (ZIP)</button>
+            <button class="export-btn" id="sendToTool4Btn" disabled>送到 Tool 4 去背</button>
+            <button class="export-btn" id="sendToLocalBtn" disabled>送到本機去背工具（ImageMatting）</button>
+            <div class="btn-row">
+                <button class="export-btn" id="exportLayoutBtn" disabled>存框設定</button>
+                <button class="export-btn" id="importLayoutBtn">讀框設定</button>
+            </div>
+            <input type="file" id="layoutInput" accept=".json,application/json" style="display:none">
+            <button class="danger-btn" id="clearAllBtn" disabled>清除所有框</button>
+            <div class="hint">框設定 (JSON) 可存起來，同版型的圖下次直接讀入套用。</div>
+        </div>
+
+        <div id="alert"></div>
+    </div>
+
+    <!-- 中央畫布 -->
+    <div id="main">
+        <div id="toolbar">
+            <span>縮放</span>
+            <input type="range" id="zoomSlider" min="5" max="800" value="100" step="1">
+            <span id="zoomVal" style="width: 50px; font-weight:700;">100%</span>
+            <button id="fitBtn">適應畫面</button>
+            <button id="actualBtn">100%</button>
+            <button id="undoBtn" disabled>復原</button>
+            <button id="redoBtn" disabled>重做</button>
+            <span id="boxCountInfo">框數 <b>0</b> / 50</span>
+            <div class="tips-wrapper">
+                <div class="tips-icon-btn" id="tipsBtn">?</div>
+                <div class="note-popup" id="tipsPopup">
+                    <h4>操作說明</h4>
+                    <ul>
+                        <li><b>空白處拖曳</b>新增框</li>
+                        <li><b>點一下框</b>選取（重疊時連點會輪流切換）</li>
+                        <li><b>拖曳已選取的框</b>移動框</li>
+                        <li><b>在未選取的框上拖曳</b>在框內畫新框</li>
+                        <li><b>控制點拖曳</b>調整大小（Shift 鎖比例）</li>
+                        <li><b>Alt + 拖曳框</b>複製並移動</li>
+                        <li><b>Ctrl + C / V</b>複製、貼上框</li>
+                        <li><b>Ctrl + D</b>原地旁複製一個框</li>
+                        <li><b>方向鍵</b>移動 1px（Shift 10px）</li>
+                        <li><b>Ctrl + 方向鍵</b>調整寬高 1px（Shift 10px）</li>
+                        <li><b>Delete</b>刪除選取的框</li>
+                        <li><b>Ctrl + Z / Y</b>復原、重做</li>
+                        <li><b>滾輪</b>以游標為中心縮放</li>
+                        <li><b>空白鍵 / 中鍵 / 右鍵拖曳</b>平移畫布</li>
+                        <li><b>Esc</b>取消選取</li>
+                        <li><b>雙擊青色建議框</b>採用 AI 建議框</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div id="viewport">
+            <canvas id="stageCanvas"></canvas>
+            <div class="empty-hint">請從左側載入圖片<br>或直接拖曳圖片到這裡</div>
+        </div>
+    </div>
+
+    <!-- 右側框選清單 -->
+    <div id="right-panel">
+        <div class="panel-header">
+            <h2>框選清單</h2>
+            <span id="listInfo">0 個</span>
+        </div>
+        <div id="box-list"></div>
+    </div>
+</div>
+
+<script>
+    // ---------- DOM ----------
+    const imageInput = document.getElementById('imageInput');
+    const maxBoxesInput = document.getElementById('maxBoxes');
+    const showLabels = document.getElementById('showLabels');
+    const dimOutside = document.getElementById('dimOutside');
+    const boxNameInput = document.getElementById('boxName');
+    const boxXInput = document.getElementById('boxX');
+    const boxYInput = document.getElementById('boxY');
+    const boxWInput = document.getElementById('boxW');
+    const boxHInput = document.getElementById('boxH');
+    const duplicateBtn = document.getElementById('duplicateBtn');
+    const deleteBtn = document.getElementById('deleteBtn');
+    const filePrefix = document.getElementById('filePrefix');
+    const includeLayout = document.getElementById('includeLayout');
+    const exportZipBtn = document.getElementById('exportZipBtn');
+    const sendToTool4Btn = document.getElementById('sendToTool4Btn');
+    const sendToLocalBtn = document.getElementById('sendToLocalBtn');
+    const exportLayoutBtn = document.getElementById('exportLayoutBtn');
+    const importLayoutBtn = document.getElementById('importLayoutBtn');
+    const layoutInput = document.getElementById('layoutInput');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const alertBox = document.getElementById('alert');
+    const zoomSlider = document.getElementById('zoomSlider');
+    const zoomVal = document.getElementById('zoomVal');
+    const fitBtn = document.getElementById('fitBtn');
+    const actualBtn = document.getElementById('actualBtn');
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+    const boxCountInfo = document.getElementById('boxCountInfo');
+    const tipsBtn = document.getElementById('tipsBtn');
+    const tipsPopup = document.getElementById('tipsPopup');
+    const viewport = document.getElementById('viewport');
+    const canvas = document.getElementById('stageCanvas');
+    const ctx = canvas.getContext('2d');
+    const boxList = document.getElementById('box-list');
+    const listInfo = document.getElementById('listInfo');
+
+    // ---------- 狀態 ----------
+    let img = null;            // 原圖 (ImageBitmap 或 HTMLImageElement)
+    let imgName = 'image';
+    let boxes = [];            // { id, name, x, y, w, h }，座標為原圖像素
+    let selectedId = null;
+    let nextId = 1;
+    let clipboard = null;
+    let view = { scale: 1, ox: 0, oy: 0 }; // 螢幕座標 = 原圖座標 * scale + o
+    let dpr = window.devicePixelRatio || 1;
+
+    const undoStack = [];
+    const redoStack = [];
+    const HISTORY_LIMIT = 100;
+
+    const HANDLE_SIZE = 9;      // 控制點螢幕像素
+    const MIN_BOX = 2;          // 最小框尺寸 (原圖像素)
+
+    let drag = null;            // 目前拖曳狀態
+    let spaceHeld = false;
+    let lastPointer = { x: 0, y: 0 };
+    let renderQueued = false;
+
+    function showAlert(msg) {
+        alertBox.innerText = msg || '';
+        if (msg) {
+            clearTimeout(showAlert._t);
+            showAlert._t = setTimeout(() => { alertBox.innerText = ''; }, 4000);
+        }
+    }
+
+    function getMaxBoxes() {
+        const v = parseInt(maxBoxesInput.value, 10);
+        return Number.isFinite(v) && v > 0 ? v : 50;
+    }
+
+    // ---------- 歷史紀錄 ----------
+    function snapshot() {
+        return JSON.stringify({ boxes, selectedId, nextId });
+    }
+    function pushHistory() {
+        undoStack.push(snapshot());
+        if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+        redoStack.length = 0;
+        updateHistoryButtons();
+    }
+    function restore(state) {
+        const s = JSON.parse(state);
+        boxes = s.boxes;
+        selectedId = s.selectedId;
+        nextId = s.nextId;
+        onBoxesChanged();
+    }
+    function undo() {
+        if (!undoStack.length) return;
+        redoStack.push(snapshot());
+        restore(undoStack.pop());
+        updateHistoryButtons();
+    }
+    function redo() {
+        if (!redoStack.length) return;
+        undoStack.push(snapshot());
+        restore(redoStack.pop());
+        updateHistoryButtons();
+    }
+    function updateHistoryButtons() {
+        undoBtn.disabled = !undoStack.length;
+        redoBtn.disabled = !redoStack.length;
+    }
+
+    // ---------- 座標轉換 ----------
+    function screenToImage(sx, sy) {
+        return { x: (sx - view.ox) / view.scale, y: (sy - view.oy) / view.scale };
+    }
+    function imageToScreen(ix, iy) {
+        return { x: ix * view.scale + view.ox, y: iy * view.scale + view.oy };
+    }
+    function pointerPos(e) {
+        const r = canvas.getBoundingClientRect();
+        return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+
+    // ---------- 框工具函式 ----------
+    function getBox(id) { return boxes.find(b => b.id === id) || null; }
+    function selectedBox() { return getBox(selectedId); }
+
+    function defaultName() {
+        // 找一個尚未使用的 box_XX 名稱
+        let n = boxes.length + 1;
+        const used = new Set(boxes.map(b => b.name));
+        while (used.has('box_' + String(n).padStart(2, '0'))) n++;
+        return 'box_' + String(n).padStart(2, '0');
+    }
+
+    function copyName(name) {
+        const used = new Set(boxes.map(b => b.name));
+        const base = name.replace(/_copy\d*$/, '');
+        let candidate = base + '_copy';
+        let i = 2;
+        while (used.has(candidate)) candidate = base + '_copy' + (i++);
+        return candidate;
+    }
+
+    // 把框限制在圖片範圍內並轉成整數
+    function clampBox(b) {
+        if (!img) return b;
+        b.w = Math.max(MIN_BOX, Math.min(Math.round(b.w), img.width));
+        b.h = Math.max(MIN_BOX, Math.min(Math.round(b.h), img.height));
+        b.x = Math.max(0, Math.min(Math.round(b.x), img.width - b.w));
+        b.y = Math.max(0, Math.min(Math.round(b.y), img.height - b.h));
+        return b;
+    }
+
+    function canAddBox(count = 1) {
+        if (boxes.length + count > getMaxBoxes()) {
+            showAlert(`已達框選上限 ${getMaxBoxes()} 個，無法再新增。可在「框選設定」調整上限。`);
+            return false;
+        }
+        return true;
+    }
+
+    function addBox(data, select = true) {
+        const b = clampBox({ id: nextId++, name: data.name || defaultName(), x: data.x, y: data.y, w: data.w, h: data.h });
+        boxes.push(b);
+        if (select) selectedId = b.id;
+        return b;
+    }
+
+    function duplicateBox(src, dx, dy) {
+        if (!src || !canAddBox()) return null;
+        pushHistory();
+        const b = addBox({ name: copyName(src.name), x: src.x + dx, y: src.y + dy, w: src.w, h: src.h });
+        onBoxesChanged();
+        return b;
+    }
+
+    function deleteSelected() {
+        if (!selectedBox()) return;
+        pushHistory();
+        boxes = boxes.filter(b => b.id !== selectedId);
+        selectedId = null;
+        onBoxesChanged();
+    }
+
+    // ---------- 命中測試 ----------
+    function handlePoints(b) {
+        const p1 = imageToScreen(b.x, b.y);
+        const p2 = imageToScreen(b.x + b.w, b.y + b.h);
+        const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+        return [
+            { k: 'nw', x: p1.x, y: p1.y, cursor: 'nwse-resize' },
+            { k: 'n',  x: mx,   y: p1.y, cursor: 'ns-resize' },
+            { k: 'ne', x: p2.x, y: p1.y, cursor: 'nesw-resize' },
+            { k: 'e',  x: p2.x, y: my,   cursor: 'ew-resize' },
+            { k: 'se', x: p2.x, y: p2.y, cursor: 'nwse-resize' },
+            { k: 's',  x: mx,   y: p2.y, cursor: 'ns-resize' },
+            { k: 'sw', x: p1.x, y: p2.y, cursor: 'nesw-resize' },
+            { k: 'w',  x: p1.x, y: my,   cursor: 'ew-resize' }
+        ];
+    }
+
+    function hitHandle(sx, sy) {
+        const b = selectedBox();
+        if (!b) return null;
+        const r = HANDLE_SIZE / 2 + 3;
+        for (const h of handlePoints(b)) {
+            if (Math.abs(sx - h.x) <= r && Math.abs(sy - h.y) <= r) return h;
+        }
+        return null;
+    }
+
+    function hitBox(sx, sy) {
+        // 選取中的框優先，其次取面積最小的（方便點到盤面框內的小圖示）
+        const sel = selectedBox();
+        if (sel && insideBox(sel, sx, sy)) return sel;
+        return hitBoxExcept(sx, sy, null);
+    }
+
+    function insideBox(b, sx, sy) {
+        const p = screenToImage(sx, sy);
+        return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+    }
+
+    // 游標下面積最小的框（排除指定 id）
+    function hitBoxExcept(sx, sy, excludeId) {
+        let best = null;
+        for (const b of boxes) {
+            if (b.id !== excludeId && insideBox(b, sx, sy) && (!best || b.w * b.h < best.w * best.h)) best = b;
+        }
+        return best;
+    }
+
+    // 同一位置有多層框時，在選取框內連點會由小到大輪流選取
+    function nextBoxUnder(sx, sy) {
+        const under = boxes.filter(b => insideBox(b, sx, sy)).sort((a, b) => a.w * a.h - b.w * b.h || a.id - b.id);
+        if (under.length < 2) return null;
+        const i = under.findIndex(b => b.id === selectedId);
+        return under[(i + 1) % under.length];
+    }
+
+    // ---------- 繪製 ----------
+    function resizeCanvas() {
+        dpr = window.devicePixelRatio || 1;
+        const r = viewport.getBoundingClientRect();
+        canvas.width = Math.max(1, Math.round(r.width * dpr));
+        canvas.height = Math.max(1, Math.round(r.height * dpr));
+        canvas.style.width = r.width + 'px';
+        canvas.style.height = r.height + 'px';
+        requestRender();
+    }
+
+    function requestRender() {
+        if (renderQueued) return;
+        renderQueued = true;
+        requestAnimationFrame(() => { renderQueued = false; render(); });
+    }
+
+    function render() {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (!img) return;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        // 原圖
+        ctx.imageSmoothingEnabled = view.scale < 2;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, view.ox, view.oy, img.width * view.scale, img.height * view.scale);
+
+        // 遮暗未框選區域
+        if (dimOutside.checked && boxes.length) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(view.ox, view.oy, img.width * view.scale, img.height * view.scale);
+            for (const b of boxes) {
+                const p = imageToScreen(b.x, b.y);
+                ctx.rect(p.x + b.w * view.scale, p.y, -b.w * view.scale, b.h * view.scale);
+            }
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            ctx.fill('evenodd');
+            ctx.restore();
+        }
+
+        ctx.font = '600 11px "Plus Jakarta Sans", "Inter", sans-serif';
+        ctx.textBaseline = 'top';
+
+        // AI 建議框（青色虛線）
+        visibleSuggestions().forEach(sg => {
+            const p = imageToScreen(sg.x, sg.y);
+            const w = sg.w * view.scale, h = sg.h * view.scale;
+            ctx.fillStyle = 'rgba(94, 214, 230, 0.08)';
+            ctx.fillRect(p.x, p.y, w, h);
+            ctx.setLineDash([4, 3]);
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = '#5ed6e6';
+            ctx.strokeRect(Math.round(p.x) + 0.5, Math.round(p.y) + 0.5, Math.round(w), Math.round(h));
+            ctx.setLineDash([]);
+            if (showLabels.checked) {
+                const text = `${sg.label} ${sg.score.toFixed(2)}`;
+                const tw = ctx.measureText(text).width + 8;
+                ctx.fillStyle = 'rgba(10, 60, 70, 0.85)';
+                ctx.fillRect(p.x, p.y + h, tw, 15);
+                ctx.fillStyle = '#c9f6fc';
+                ctx.fillText(text, p.x + 4, p.y + h + 2);
+            }
+        });
+
+        // 框
+        ctx.textBaseline = 'top';
+        boxes.forEach((b, i) => {
+            const p = imageToScreen(b.x, b.y);
+            const w = b.w * view.scale, h = b.h * view.scale;
+            const isSel = b.id === selectedId;
+            ctx.fillStyle = isSel ? 'rgba(226, 176, 103, 0.14)' : 'rgba(255, 255, 255, 0.05)';
+            ctx.fillRect(p.x, p.y, w, h);
+            ctx.lineWidth = isSel ? 2 : 1;
+            ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+            ctx.strokeRect(Math.round(p.x) + 0.5, Math.round(p.y) + 0.5, Math.round(w), Math.round(h));
+            ctx.setLineDash(isSel ? [] : [5, 3]);
+            ctx.strokeStyle = isSel ? '#e2b067' : 'rgba(255,255,255,0.9)';
+            ctx.strokeRect(Math.round(p.x) + 0.5, Math.round(p.y) + 0.5, Math.round(w), Math.round(h));
+            ctx.setLineDash([]);
+
+            if (showLabels.checked || isSel) {
+                const text = `${String(i + 1).padStart(2, '0')} ${b.name}`;
+                const tw = ctx.measureText(text).width + 8;
+                const ly = p.y - 16 >= 0 ? p.y - 16 : p.y;
+                ctx.fillStyle = isSel ? '#e2b067' : 'rgba(13,12,14,0.8)';
+                ctx.fillRect(p.x, ly, tw, 16);
+                ctx.fillStyle = isSel ? '#0d0c0e' : '#f5f2ee';
+                ctx.fillText(text, p.x + 4, ly + 2);
+            }
+        });
+
+        // 選取框的控制點
+        const sel = selectedBox();
+        if (sel) {
+            for (const hp of handlePoints(sel)) {
+                ctx.fillStyle = '#ffffff';
+                ctx.strokeStyle = '#0d0c0e';
+                ctx.lineWidth = 1;
+                ctx.fillRect(hp.x - HANDLE_SIZE / 2, hp.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+                ctx.strokeRect(hp.x - HANDLE_SIZE / 2 + 0.5, hp.y - HANDLE_SIZE / 2 + 0.5, HANDLE_SIZE - 1, HANDLE_SIZE - 1);
+            }
+        }
+
+        // 陣列複製預覽（紫色虛線）
+        if (arrayPreviewOn && sel) {
+            const cells = arrayCells(sel);
+            ctx.setLineDash([6, 3]);
+            ctx.lineWidth = 1.5;
+            cells.forEach(c => {
+                if (c.r === 0 && c.c === 0) return;
+                const p = imageToScreen(c.x, c.y);
+                ctx.fillStyle = c.outside ? 'rgba(224, 93, 83, 0.15)' : 'rgba(190, 140, 255, 0.12)';
+                ctx.fillRect(p.x, p.y, c.w * view.scale, c.h * view.scale);
+                ctx.strokeStyle = c.outside ? '#e05d53' : '#be8cff';
+                ctx.strokeRect(Math.round(p.x) + 0.5, Math.round(p.y) + 0.5, Math.round(c.w * view.scale), Math.round(c.h * view.scale));
+            });
+            ctx.setLineDash([]);
+        }
+
+        // 新增框時的尺寸提示
+        if (drag && (drag.mode === 'create' || drag.mode === 'resize' || drag.mode === 'move') && sel) {
+            const p = imageToScreen(sel.x + sel.w, sel.y + sel.h);
+            const text = drag.mode === 'move' ? `${sel.x}, ${sel.y}` : `${sel.w} × ${sel.h}`;
+            const tw = ctx.measureText(text).width + 10;
+            ctx.fillStyle = 'rgba(13,12,14,0.85)';
+            ctx.fillRect(p.x + 6, p.y + 6, tw, 18);
+            ctx.fillStyle = '#f5f2ee';
+            ctx.fillText(text, p.x + 11, p.y + 9);
+        }
+    }
+
+    // ---------- 縮放 / 平移 ----------
+    function setZoom(newScale, anchorX, anchorY) {
+        newScale = Math.max(0.05, Math.min(8, newScale));
+        if (anchorX === undefined) {
+            const r = viewport.getBoundingClientRect();
+            anchorX = r.width / 2;
+            anchorY = r.height / 2;
+        }
+        const p = screenToImage(anchorX, anchorY);
+        view.scale = newScale;
+        view.ox = anchorX - p.x * newScale;
+        view.oy = anchorY - p.y * newScale;
+        updateZoomUI();
+        requestRender();
+    }
+
+    function fitToView() {
+        if (!img) return;
+        const r = viewport.getBoundingClientRect();
+        const pad = 40;
+        const s = Math.min((r.width - pad * 2) / img.width, (r.height - pad * 2) / img.height);
+        view.scale = Math.max(0.05, Math.min(8, s));
+        view.ox = (r.width - img.width * view.scale) / 2;
+        view.oy = (r.height - img.height * view.scale) / 2;
+        updateZoomUI();
+        requestRender();
+    }
+
+    function updateZoomUI() {
+        const pct = view.scale * 100;
+        zoomSlider.value = Math.round(pct);
+        zoomVal.innerText = pct.toFixed(0) + '%';
+    }
+
+    // ---------- 滑鼠操作 ----------
+    function updateCursor(sx, sy) {
+        if (!img) { canvas.style.cursor = 'default'; return; }
+        if (drag && drag.mode === 'pan') { canvas.style.cursor = 'grabbing'; return; }
+        if (spaceHeld) { canvas.style.cursor = 'grab'; return; }
+        const h = hitHandle(sx, sy);
+        if (h) { canvas.style.cursor = h.cursor; return; }
+        const b = hitBox(sx, sy);
+        canvas.style.cursor = b ? 'move' : 'crosshair';
+    }
+
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+    canvas.addEventListener('pointerdown', e => {
+        if (!img) return;
+        canvas.focus();
+        canvas.setPointerCapture(e.pointerId);
+        const s = pointerPos(e);
+        lastPointer = s;
+
+        // 平移：空白鍵 / 中鍵 / 右鍵
+        if (spaceHeld || e.button === 1 || e.button === 2) {
+            drag = { mode: 'pan', sx: s.x, sy: s.y, ox: view.ox, oy: view.oy };
+            updateCursor(s.x, s.y);
+            return;
+        }
+        if (e.button !== 0) return;
+
+        const p = screenToImage(s.x, s.y);
+        const handle = hitHandle(s.x, s.y);
+        if (handle) {
+            const b = selectedBox();
+            drag = { mode: 'resize', handle: handle.k, start: { ...b }, px: p.x, py: p.y, before: snapshot(), changed: false };
+            return;
+        }
+
+        const hit = hitBox(s.x, s.y);
+        if (hit && e.altKey) {
+            // Alt + 拖曳：複製一份再拖
+            if (!canAddBox()) return;
+            const before = snapshot();
+            const target = addBox({ name: copyName(hit.name), x: hit.x, y: hit.y, w: hit.w, h: hit.h });
+            drag = { mode: 'move', start: { ...target }, px: p.x, py: p.y, before, changed: true };
+            onSelectionChanged();
+            return;
+        }
+        if (hit && hit.id === selectedId) {
+            // 選取中的框：拖曳 = 移動；沒拖曳只點一下 = 改選框內更小的框
+            drag = { mode: 'move', start: { ...hit }, px: p.x, py: p.y, sx: s.x, sy: s.y, before: snapshot(), changed: false, clickPick: true };
+            return;
+        }
+        if (hit) {
+            // 未選取的框：點一下 = 選取；拖曳 = 在框內畫新框（方便在盤面框、背景框內再框小圖示）
+            drag = { mode: 'pending', hitId: hit.id, sx: s.x, sy: s.y, ax: Math.round(p.x), ay: Math.round(p.y) };
+            return;
+        }
+
+        // 空白處：新增框
+        if (p.x < 0 || p.y < 0 || p.x > img.width || p.y > img.height) {
+            selectedId = null;
+            onSelectionChanged();
+            return;
+        }
+        if (!canAddBox()) {
+            selectedId = null;
+            onSelectionChanged();
+            return;
+        }
+        const before = snapshot();
+        const ix = Math.round(p.x), iy = Math.round(p.y);
+        const b = { id: nextId++, name: defaultName(), x: ix, y: iy, w: 0, h: 0 };
+        boxes.push(b);
+        selectedId = b.id;
+        drag = { mode: 'create', ax: ix, ay: iy, before, box: b };
+        onSelectionChanged();
+    });
+
+    canvas.addEventListener('pointermove', e => {
+        const s = pointerPos(e);
+        lastPointer = s;
+        if (!drag) { updateCursor(s.x, s.y); return; }
+        const p = screenToImage(s.x, s.y);
+
+        if (drag.mode === 'pan') {
+            view.ox = drag.ox + (s.x - drag.sx);
+            view.oy = drag.oy + (s.y - drag.sy);
+            requestRender();
+            return;
+        }
+
+        if (drag.mode === 'pending') {
+            if (Math.hypot(s.x - drag.sx, s.y - drag.sy) < 4) return;
+            if (!canAddBox()) { drag = null; return; }
+            const before = snapshot();
+            const nb = { id: nextId++, name: defaultName(), x: drag.ax, y: drag.ay, w: 0, h: 0 };
+            boxes.push(nb);
+            selectedId = nb.id;
+            drag = { mode: 'create', ax: drag.ax, ay: drag.ay, before, box: nb };
+            onSelectionChanged();
+        }
+
+        const b = selectedBox();
+        if (!b) return;
+        const clampX = v => Math.max(0, Math.min(img.width, Math.round(v)));
+        const clampY = v => Math.max(0, Math.min(img.height, Math.round(v)));
+
+        if (drag.mode === 'create') {
+            let x2 = clampX(p.x), y2 = clampY(p.y);
+            if (e.shiftKey) {
+                // Shift：正方形
+                const size = Math.max(Math.abs(x2 - drag.ax), Math.abs(y2 - drag.ay));
+                x2 = clampX(drag.ax + Math.sign(x2 - drag.ax || 1) * size);
+                y2 = clampY(drag.ay + Math.sign(y2 - drag.ay || 1) * size);
+            }
+            b.x = Math.min(drag.ax, x2);
+            b.y = Math.min(drag.ay, y2);
+            b.w = Math.abs(x2 - drag.ax);
+            b.h = Math.abs(y2 - drag.ay);
+        } else if (drag.mode === 'move') {
+            if (!drag.changed && drag.sx !== undefined && Math.hypot(s.x - drag.sx, s.y - drag.sy) < 3) return;
+            b.x = drag.start.x + Math.round(p.x - drag.px);
+            b.y = drag.start.y + Math.round(p.y - drag.py);
+            b.x = Math.max(0, Math.min(b.x, img.width - b.w));
+            b.y = Math.max(0, Math.min(b.y, img.height - b.h));
+            drag.changed = true;
+        } else if (drag.mode === 'resize') {
+            const st = drag.start;
+            let x1 = st.x, y1 = st.y, x2 = st.x + st.w, y2 = st.y + st.h;
+            const dx = p.x - drag.px, dy = p.y - drag.py;
+            const k = drag.handle;
+            if (k.includes('w')) x1 = st.x + dx;
+            if (k.includes('e')) x2 = st.x + st.w + dx;
+            if (k.includes('n')) y1 = st.y + dy;
+            if (k.includes('s')) y2 = st.y + st.h + dy;
+
+            // Shift：鎖定原比例（角落控制點）
+            if (e.shiftKey && k.length === 2 && st.w > 0 && st.h > 0) {
+                const ratio = st.w / st.h;
+                let w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+                if (w / ratio > h) h = w / ratio; else w = h * ratio;
+                if (k.includes('w')) x1 = x2 - w; else x2 = x1 + w;
+                if (k.includes('n')) y1 = y2 - h; else y2 = y1 + h;
+            }
+
+            x1 = clampX(x1); x2 = clampX(x2); y1 = clampY(y1); y2 = clampY(y2);
+            b.x = Math.min(x1, x2);
+            b.y = Math.min(y1, y2);
+            b.w = Math.max(MIN_BOX, Math.abs(x2 - x1));
+            b.h = Math.max(MIN_BOX, Math.abs(y2 - y1));
+            drag.changed = true;
+        }
+        syncInputs();
+        requestRender();
+    });
+
+    function endDrag() {
+        if (!drag) return;
+        const d = drag;
+        drag = null;
+        if (d.mode === 'pending') {
+            selectedId = d.hitId;
+            onSelectionChanged();
+            return;
+        }
+        if (d.mode === 'move' && d.clickPick && !d.changed) {
+            // 點在選取框內但沒拖曳：若同位置還有其他框就輪流改選
+            const inner = nextBoxUnder(d.sx, d.sy);
+            if (inner) { selectedId = inner.id; onSelectionChanged(); }
+            return;
+        }
+        if (d.mode === 'create') {
+            const b = d.box;
+            if (b.w < MIN_BOX || b.h < MIN_BOX) {
+                // 只是點一下：取消新增
+                boxes = boxes.filter(x => x.id !== b.id);
+                nextId--;
+                selectedId = null;
+                onSelectionChanged();
+                requestRender();
+                return;
+            }
+            commitHistory(d.before);
+        } else if ((d.mode === 'move' || d.mode === 'resize') && d.changed) {
+            commitHistory(d.before);
+        }
+        onBoxesChanged();
+    }
+
+    function commitHistory(before) {
+        undoStack.push(before);
+        if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+        redoStack.length = 0;
+        updateHistoryButtons();
+    }
+
+    canvas.addEventListener('pointerup', e => {
+        endDrag();
+        const s = pointerPos(e);
+        updateCursor(s.x, s.y);
+    });
+    canvas.addEventListener('pointercancel', endDrag);
+
+    viewport.addEventListener('wheel', e => {
+        if (!img) return;
+        e.preventDefault();
+        const s = pointerPos(e);
+        const factor = Math.exp(-e.deltaY * 0.0015);
+        setZoom(view.scale * factor, s.x, s.y);
+    }, { passive: false });
+
+    // ---------- 鍵盤 ----------
+    function isTyping(e) {
+        const t = e.target;
+        return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+    }
+
+    // 方向鍵連續操作只記一次歷史
+    let nudgeTimer = null;
+    let nudgeBefore = null;
+    function nudge(fn) {
+        const b = selectedBox();
+        if (!b) return;
+        if (!nudgeBefore) nudgeBefore = snapshot();
+        fn(b);
+        clampBox(b);
+        syncInputs();
+        requestRender();
+        clearTimeout(nudgeTimer);
+        nudgeTimer = setTimeout(() => {
+            commitHistory(nudgeBefore);
+            nudgeBefore = null;
+            onBoxesChanged();
+        }, 400);
+    }
+
+    window.addEventListener('keydown', e => {
+        if (e.code === 'Space' && !isTyping(e)) {
+            spaceHeld = true;
+            updateCursor(lastPointer.x, lastPointer.y);
+            e.preventDefault();
+            return;
+        }
+        if (isTyping(e)) return;
+        const mod = e.ctrlKey || e.metaKey;
+        const key = e.key.toLowerCase();
+
+        if (mod && key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+        if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
+        if (mod && key === 'c') {
+            const b = selectedBox();
+            if (b) { clipboard = { ...b }; showAlert(`已複製框「${b.name}」，按 Ctrl+V 貼上。`); }
+            return;
+        }
+        if (mod && key === 'v') {
+            if (clipboard) {
+                // 有複製的框才攔截，否則交給 paste 事件處理貼上圖片
+                e.preventDefault();
+                const b = duplicateBox(clipboard, 10, 10);
+                if (b) clipboard = { ...b };
+            }
+            return;
+        }
+        if (mod && key === 'd') { e.preventDefault(); const b = selectedBox(); if (b) duplicateBox(b, 10, 10); return; }
+        if (key === 'delete' || key === 'backspace') { e.preventDefault(); deleteSelected(); return; }
+        if (key === 'escape') { selectedId = null; onSelectionChanged(); return; }
+
+        const step = e.shiftKey ? 10 : 1;
+        const arrows = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] };
+        if (arrows[key] && selectedBox()) {
+            e.preventDefault();
+            const [ax, ay] = arrows[key];
+            if (mod) nudge(b => { b.w = Math.max(MIN_BOX, b.w + ax * step); b.h = Math.max(MIN_BOX, b.h + ay * step); });
+            else nudge(b => { b.x += ax * step; b.y += ay * step; });
+        }
+    });
+    window.addEventListener('keyup', e => {
+        if (e.code === 'Space') {
+            spaceHeld = false;
+            updateCursor(lastPointer.x, lastPointer.y);
+        }
+    });
+
+    // ---------- 選取框欄位 ----------
+    function syncInputs() {
+        const b = selectedBox();
+        const inputs = [boxNameInput, boxXInput, boxYInput, boxWInput, boxHInput];
+        inputs.forEach(i => i.disabled = !b);
+        duplicateBtn.disabled = !b;
+        deleteBtn.disabled = !b;
+        arrayBtn.disabled = !b;
+        if (!b) {
+            boxNameInput.value = '';
+            boxXInput.value = boxYInput.value = boxWInput.value = boxHInput.value = '';
+            return;
+        }
+        if (document.activeElement !== boxNameInput) boxNameInput.value = b.name;
+        if (document.activeElement !== boxXInput) boxXInput.value = b.x;
+        if (document.activeElement !== boxYInput) boxYInput.value = b.y;
+        if (document.activeElement !== boxWInput) boxWInput.value = b.w;
+        if (document.activeElement !== boxHInput) boxHInput.value = b.h;
+    }
+
+    // 欄位修改：focus 時記下修改前狀態，change 時寫入歷史
+    let fieldBefore = null;
+    [boxNameInput, boxXInput, boxYInput, boxWInput, boxHInput].forEach(input => {
+        input.addEventListener('focus', () => { fieldBefore = snapshot(); });
+        input.addEventListener('input', () => {
+            const b = selectedBox();
+            if (!b) return;
+            if (input === boxNameInput) {
+                b.name = input.value.trim() || b.name;
+            } else {
+                const v = parseInt(input.value, 10);
+                if (!Number.isFinite(v)) return;
+                if (input === boxXInput) b.x = v;
+                if (input === boxYInput) b.y = v;
+                if (input === boxWInput) b.w = v;
+                if (input === boxHInput) b.h = v;
+                clampBox(b);
+            }
+            requestRender();
+        });
+        input.addEventListener('change', () => {
+            if (fieldBefore && fieldBefore !== snapshot()) commitHistory(fieldBefore);
+            fieldBefore = snapshot();
+            onBoxesChanged();
+        });
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
+    });
+
+    duplicateBtn.addEventListener('click', () => { const b = selectedBox(); if (b) duplicateBox(b, 10, 10); });
+    deleteBtn.addEventListener('click', deleteSelected);
+
+    // ---------- 右側清單 ----------
+    let thumbTimer = null;
+    function renderList() {
+        boxList.innerHTML = '';
+        boxes.forEach((b, i) => {
+            const item = document.createElement('div');
+            item.className = 'box-item' + (b.id === selectedId ? ' active' : '');
+            item.dataset.id = b.id;
+
+            const thumbBox = document.createElement('div');
+            thumbBox.className = 'box-thumb';
+            thumbBox.appendChild(makeThumb(b));
+
+            const name = document.createElement('div');
+            name.className = 'box-name';
+            name.innerText = `${String(i + 1).padStart(2, '0')} ${b.name}`;
+
+            const size = document.createElement('div');
+            size.className = 'box-size';
+            size.innerText = `${b.w} × ${b.h}`;
+
+            item.append(thumbBox, name, size);
+            item.addEventListener('click', () => {
+                selectedId = b.id;
+                onSelectionChanged();
+                scrollBoxIntoView(b);
+            });
+            boxList.appendChild(item);
+        });
+        listInfo.innerText = `${boxes.length} 個`;
+    }
+
+    function makeThumb(b) {
+        const maxSide = 110;
+        const s = Math.min(1, maxSide / Math.max(b.w, b.h));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(b.w * s));
+        c.height = Math.max(1, Math.round(b.h * s));
+        const cx = c.getContext('2d');
+        cx.imageSmoothingQuality = 'high';
+        cx.drawImage(img, b.x, b.y, b.w, b.h, 0, 0, c.width, c.height);
+        return c;
+    }
+
+    function updateListSelection() {
+        boxList.querySelectorAll('.box-item').forEach(el => {
+            el.classList.toggle('active', parseInt(el.dataset.id, 10) === selectedId);
+        });
+        const active = boxList.querySelector('.box-item.active');
+        if (active) active.scrollIntoView({ block: 'nearest' });
+    }
+
+    // 選取的框若不在畫面內就移過去
+    function scrollBoxIntoView(b) {
+        const r = viewport.getBoundingClientRect();
+        const p1 = imageToScreen(b.x, b.y);
+        const p2 = imageToScreen(b.x + b.w, b.y + b.h);
+        if (p1.x >= 0 && p1.y >= 0 && p2.x <= r.width && p2.y <= r.height) return;
+        view.ox = r.width / 2 - (b.x + b.w / 2) * view.scale;
+        view.oy = r.height / 2 - (b.y + b.h / 2) * view.scale;
+        requestRender();
+    }
+
+    function updateCountInfo() {
+        const max = getMaxBoxes();
+        boxCountInfo.innerHTML = `框數 <b>${boxes.length}</b> / ${max}`;
+        boxCountInfo.classList.toggle('full', boxes.length >= max);
+        exportZipBtn.disabled = !img || !boxes.length;
+        sendToTool4Btn.disabled = !img || !boxes.length;
+        sendToLocalBtn.disabled = !img || !boxes.length;
+        exportLayoutBtn.disabled = !boxes.length;
+        clearAllBtn.disabled = !boxes.length;
+    }
+
+    function onSelectionChanged() {
+        syncInputs();
+        updateListSelection();
+        requestRender();
+    }
+
+    function onBoxesChanged() {
+        updateAiUI();
+        syncInputs();
+        updateCountInfo();
+        requestRender();
+        clearTimeout(thumbTimer);
+        thumbTimer = setTimeout(renderList, 60);
+    }
+
+    // ---------- 載入圖片 ----------
+    async function loadImageFile(file) {
+        if (!file || !file.type.startsWith('image/')) { showAlert('請選擇圖片檔案。'); return; }
+        try {
+            const bitmap = await createImageBitmap(file);
+            img = bitmap;
+            imgName = (file.name || 'image').replace(/\.[^.]+$/, '') || 'image';
+            viewport.classList.add('has-loaded-content');
+            // 換圖時保留框（方便同版型套用），但超出範圍的會被夾回圖內
+            boxes.forEach(clampBox);
+            suggestions = [];
+            updateAiUI();
+            fitToView();
+            onBoxesChanged();
+            showAlert(`已載入 ${file.name || '圖片'}（${img.width} × ${img.height}）`);
+        } catch (err) {
+            console.error(err);
+            showAlert('圖片載入失敗：' + err.message);
+        }
+    }
+
+    imageInput.addEventListener('change', e => { if (e.target.files[0]) loadImageFile(e.target.files[0]); });
+
+    viewport.addEventListener('dragover', e => { e.preventDefault(); viewport.classList.add('drag-over'); });
+    viewport.addEventListener('dragleave', () => viewport.classList.remove('drag-over'));
+    viewport.addEventListener('drop', e => {
+        e.preventDefault();
+        viewport.classList.remove('drag-over');
+        const file = [...e.dataTransfer.files].find(f => f.type.startsWith('image/'));
+        if (file) loadImageFile(file);
+    });
+
+    window.addEventListener('paste', e => {
+        if (isTyping(e)) return;
+        const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+        if (item) loadImageFile(item.getAsFile());
+    });
+
+    // ---------- 匯出 ----------
+    function sanitizeName(name) {
+        return name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'box';
+    }
+
+    function layoutData() {
+        return {
+            tool: 'ImgArray tool3',
+            version: 1,
+            image: img ? { name: imgName, width: img.width, height: img.height } : null,
+            boxes: boxes.map((b, i) => ({ index: i + 1, name: b.name, x: b.x, y: b.y, w: b.w, h: b.h }))
+        };
+    }
+
+    function cropToBlob(b) {
+        const c = document.createElement('canvas');
+        c.width = b.w;
+        c.height = b.h;
+        c.getContext('2d').drawImage(img, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h);
+        return new Promise(resolve => c.toBlob(resolve, 'image/png'));
+    }
+
+    exportZipBtn.addEventListener('click', async () => {
+        if (!img || !boxes.length) return;
+        exportZipBtn.disabled = true;
+        const original = exportZipBtn.innerText;
+        try {
+            const zip = new JSZip();
+            const prefix = filePrefix.value.trim() ? sanitizeName(filePrefix.value.trim()) + '_' : '';
+            const pad = Math.max(2, String(boxes.length).length);
+            const used = new Set();
+            for (let i = 0; i < boxes.length; i++) {
+                const b = boxes[i];
+                exportZipBtn.innerText = `切圖中 ${i + 1} / ${boxes.length}`;
+                const blob = await cropToBlob(b);
+                let fileName = `${prefix}${String(i + 1).padStart(pad, '0')}_${sanitizeName(b.name)}.png`;
+                while (used.has(fileName)) fileName = fileName.replace(/\.png$/, '_1.png');
+                used.add(fileName);
+                zip.file(fileName, blob);
+            }
+            if (includeLayout.checked) zip.file('layout.json', JSON.stringify(layoutData(), null, 2));
+            exportZipBtn.innerText = '壓縮中…';
+            const content = await zip.generateAsync({ type: 'blob' }, meta => {
+                exportZipBtn.innerText = `壓縮中 ${meta.percent.toFixed(0)}%`;
+            });
+            saveAs(content, `${prefix}${sanitizeName(imgName)}_slices.zip`);
+            showAlert(`已匯出 ${boxes.length} 張切圖。`);
+        } catch (err) {
+            console.error(err);
+            showAlert('匯出失敗：' + err.message);
+        } finally {
+            exportZipBtn.innerText = original;
+            updateCountInfo();
+        }
+    });
+
+    exportLayoutBtn.addEventListener('click', () => {
+        const blob = new Blob([JSON.stringify(layoutData(), null, 2)], { type: 'application/json' });
+        saveAs(blob, `${sanitizeName(imgName)}_layout.json`);
+    });
+
+    importLayoutBtn.addEventListener('click', () => layoutInput.click());
+    layoutInput.addEventListener('change', async e => {
+        const file = e.target.files[0];
+        layoutInput.value = '';
+        if (!file) return;
+        try {
+            const data = JSON.parse(await file.text());
+            const list = Array.isArray(data) ? data : data.boxes;
+            if (!Array.isArray(list)) throw new Error('找不到 boxes 陣列');
+            const valid = list.filter(b => [b.x, b.y, b.w, b.h].every(Number.isFinite));
+            const raised = valid.length > getMaxBoxes();
+            if (raised) maxBoxesInput.value = valid.length;
+            pushHistory();
+            boxes = [];
+            selectedId = null;
+            valid.forEach(b => addBox(b, false));
+            onBoxesChanged();
+            if (data.image && img && (data.image.width !== img.width || data.image.height !== img.height)) {
+                showAlert(`注意：框設定原本對應 ${data.image.width} × ${data.image.height} 的圖，目前圖片是 ${img.width} × ${img.height}。`);
+            } else if (raised) {
+                showAlert(`已讀入 ${valid.length} 個框，超過原本上限，已自動把上限調到 ${valid.length}。`);
+            } else {
+                showAlert(`已讀入 ${valid.length} 個框。`);
+            }
+        } catch (err) {
+            console.error(err);
+            showAlert('讀取框設定失敗：' + err.message);
+        }
+    });
+
+    clearAllBtn.addEventListener('click', () => {
+        if (!boxes.length) return;
+        if (!confirm(`確定要清除全部 ${boxes.length} 個框嗎？（可用復原找回）`)) return;
+        pushHistory();
+        boxes = [];
+        selectedId = null;
+        onBoxesChanged();
+    });
+
+    // ---------- 工具列 ----------
+    zoomSlider.addEventListener('input', () => setZoom(parseFloat(zoomSlider.value) / 100));
+    fitBtn.addEventListener('click', fitToView);
+    actualBtn.addEventListener('click', () => setZoom(1));
+    undoBtn.addEventListener('click', undo);
+    redoBtn.addEventListener('click', redo);
+    showLabels.addEventListener('change', requestRender);
+    dimOutside.addEventListener('change', requestRender);
+    maxBoxesInput.addEventListener('change', () => {
+        if (getMaxBoxes() < boxes.length) showAlert(`目前已有 ${boxes.length} 個框，超過新上限；既有的框會保留，但不能再新增。`);
+        updateCountInfo();
+    });
+
+    tipsBtn.addEventListener('click', e => { e.stopPropagation(); tipsPopup.classList.toggle('show'); });
+    document.addEventListener('click', e => { if (!tipsPopup.contains(e.target)) tipsPopup.classList.remove('show'); });
+
+
+    // ---------- 陣列複製 ----------
+    const arrCols = document.getElementById('arrCols');
+    const arrRows = document.getElementById('arrRows');
+    const arrGapX = document.getElementById('arrGapX');
+    const arrGapY = document.getElementById('arrGapY');
+    const arrRename = document.getElementById('arrRename');
+    const arrayBtn = document.getElementById('arrayBtn');
+    const arrayGroup = document.getElementById('arrayGroup');
+    let arrayPreviewOn = false;
+    let arrayHover = false, arrayFocus = false;
+
+    function readInt(input, fallback) {
+        const v = parseInt(input.value, 10);
+        return Number.isFinite(v) ? v : fallback;
+    }
+
+    // 以選取框為左上第一格，算出整個陣列每一格的位置
+    function arrayCells(src) {
+        const cols = Math.max(1, Math.min(100, readInt(arrCols, 1)));
+        const rows = Math.max(1, Math.min(100, readInt(arrRows, 1)));
+        const gx = readInt(arrGapX, 0), gy = readInt(arrGapY, 0);
+        const cells = [];
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const x = src.x + c * (src.w + gx);
+                const y = src.y + r * (src.h + gy);
+                const outside = !img || x < 0 || y < 0 || x + src.w > img.width || y + src.h > img.height;
+                cells.push({ r, c, x, y, w: src.w, h: src.h, outside });
+            }
+        }
+        return cells;
+    }
+
+    function arrayBaseName(name) {
+        return name.replace(/_\d+_\d+$/, '').replace(/_\d+$/, '') || 'box';
+    }
+
+    function generateArray() {
+        const src = selectedBox();
+        if (!src || !img) return;
+        const cells = arrayCells(src);
+        const inside = cells.filter(c => !c.outside);
+        const newCells = inside.filter(c => c.r !== 0 || c.c !== 0);
+        if (!newCells.length) { showAlert('陣列只有 1 格，請把橫向或縱向數量調大。'); return; }
+        if (!canAddBox(newCells.length)) return;
+
+        pushHistory();
+        const rows = Math.max(...cells.map(c => c.r)) + 1;
+        const cols = Math.max(...cells.map(c => c.c)) + 1;
+        const base = arrayBaseName(src.name);
+        const pad = n => String(n).padStart(2, '0');
+        const cellName = c => {
+            if (rows === 1) return `${base}_${pad(c.c + 1)}`;
+            if (cols === 1) return `${base}_${pad(c.r + 1)}`;
+            return `${base}_${pad(c.r + 1)}_${pad(c.c + 1)}`;
+        };
+        if (arrRename.checked) src.name = cellName({ r: 0, c: 0 });
+        newCells.forEach(c => {
+            addBox({ name: arrRename.checked ? cellName(c) : copyName(src.name), x: c.x, y: c.y, w: c.w, h: c.h }, false);
+        });
+        selectedId = src.id;
+        onBoxesChanged();
+        const skipped = cells.length - inside.length;
+        showAlert(`已產生 ${newCells.length} 個框` + (skipped ? `，有 ${skipped} 格超出圖片範圍已略過。` : '。'));
+    }
+
+    function updateArrayPreview() {
+        arrayPreviewOn = arrayHover || arrayFocus;
+        requestRender();
+    }
+    arrayGroup.addEventListener('mouseenter', () => { arrayHover = true; updateArrayPreview(); });
+    arrayGroup.addEventListener('mouseleave', () => { arrayHover = false; updateArrayPreview(); });
+    arrayGroup.addEventListener('focusin', () => { arrayFocus = true; updateArrayPreview(); });
+    arrayGroup.addEventListener('focusout', () => { arrayFocus = false; updateArrayPreview(); });
+    [arrCols, arrRows, arrGapX, arrGapY].forEach(i => i.addEventListener('input', requestRender));
+    arrayBtn.addEventListener('click', generateArray);
+
+    // ---------- AI 建議框 ----------
+    // 在瀏覽器內用 transformers.js 跑零樣本物件偵測（OWL-ViT / OWLv2），結果只當「建議」，由使用者採用。
+    const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
+    const aiModel = document.getElementById('aiModel');
+    const aiLabels = document.getElementById('aiLabels');
+    const aiTiled = document.getElementById('aiTiled');
+    const aiInSelection = document.getElementById('aiInSelection');
+    const aiThreshold = document.getElementById('aiThreshold');
+    const aiThresholdVal = document.getElementById('aiThresholdVal');
+    const aiDetectBtn = document.getElementById('aiDetectBtn');
+    const aiStatus = document.getElementById('aiStatus');
+    const aiAcceptAllBtn = document.getElementById('aiAcceptAllBtn');
+    const aiClearBtn = document.getElementById('aiClearBtn');
+
+    let suggestions = [];       // { x, y, w, h, label, score }，原圖座標
+    let tf = null;              // transformers.js 模組
+    let detector = null;
+    let detectorKey = '';
+    let detecting = false;
+
+    function iou(a, b) {
+        const x1 = Math.max(a.x, b.x), y1 = Math.max(a.y, b.y);
+        const x2 = Math.min(a.x + a.w, b.x + b.w), y2 = Math.min(a.y + a.h, b.y + b.h);
+        const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+        return inter / (a.w * a.h + b.w * b.h - inter || 1);
+    }
+
+    // 依門檻過濾，並隱藏和現有框高度重疊的建議
+    function visibleSuggestions() {
+        const th = aiThreshold.value / 100;
+        return suggestions.filter(sg => sg.score >= th && !boxes.some(b => iou(sg, b) > 0.6));
+    }
+
+    function updateAiUI() {
+        const vis = visibleSuggestions().length;
+        aiDetectBtn.disabled = !img || detecting;
+        aiAcceptAllBtn.disabled = !vis || detecting;
+        aiClearBtn.disabled = !suggestions.length || detecting;
+        aiThresholdVal.innerText = (aiThreshold.value / 100).toFixed(2);
+        if (!detecting && suggestions.length) {
+            aiStatus.innerText = `共 ${suggestions.length} 個建議，目前顯示 ${vis} 個（可拉信心門檻調整）。`;
+        } else if (!detecting) {
+            aiStatus.innerText = '';
+        }
+    }
+
+    function setAiStatus(text) { aiStatus.innerText = text; }
+
+    async function getDetector() {
+        const model = aiModel.value;
+        if (!tf) {
+            setAiStatus('載入 AI 函式庫中…');
+            tf = await import(TRANSFORMERS_URL);
+        }
+        const tryDevice = navigator.gpu ? 'webgpu' : 'wasm';
+        const key = model;
+        if (detector && detectorKey === key) return detector;
+        detector = null;
+        const files = {};
+        const progress_callback = info => {
+            if (info.status === 'progress' && info.total) {
+                files[info.file] = [info.loaded, info.total];
+                const loaded = Object.values(files).reduce((s, f) => s + f[0], 0);
+                const total = Object.values(files).reduce((s, f) => s + f[1], 0);
+                setAiStatus(`下載模型中 ${(loaded / 1048576).toFixed(0)} / ${(total / 1048576).toFixed(0)} MB（只有第一次需要）`);
+            }
+        };
+        try {
+            detector = await tf.pipeline('zero-shot-object-detection', model, { device: tryDevice, progress_callback });
+        } catch (err) {
+            if (tryDevice !== 'webgpu') throw err;
+            console.warn('WebGPU 載入失敗，改用 WASM', err);
+            detector = await tf.pipeline('zero-shot-object-detection', model, { device: 'wasm', progress_callback });
+        }
+        detectorKey = key;
+        return detector;
+    }
+
+    // 把偵測範圍切成重疊的小區塊；另外加一次整區偵測抓大物件
+    function detectRegions(area) {
+        const regions = [area];
+        if (!aiTiled.checked) return regions;
+        const tile = aiModel.value.includes('owlv2') ? 960 : 768;
+        if (area.w <= tile * 1.2 && area.h <= tile * 1.2) return regions;
+        const step = Math.round(tile * 0.75);
+        const xs = [], ys = [];
+        for (let x = area.x; ; x += step) { xs.push(Math.min(x, area.x + area.w - tile)); if (x + tile >= area.x + area.w) break; }
+        for (let y = area.y; ; y += step) { ys.push(Math.min(y, area.y + area.h - tile)); if (y + tile >= area.y + area.h) break; }
+        for (const y of ys) for (const x of xs) {
+            regions.push({ x: Math.max(area.x, x), y: Math.max(area.y, y), w: Math.min(tile, area.w), h: Math.min(tile, area.h), tile: true });
+        }
+        return regions;
+    }
+
+    async function runDetection() {
+        if (!img || detecting) return;
+        const labels = aiLabels.value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+        if (!labels.length) { showAlert('請輸入要找的東西，例如 icon, button。'); return; }
+        const sel = selectedBox();
+        if (aiInSelection.checked && !sel) { showAlert('已勾選「只偵測選取框範圍內」，請先選取一個框。'); return; }
+        const area = aiInSelection.checked ? { x: sel.x, y: sel.y, w: sel.w, h: sel.h } : { x: 0, y: 0, w: img.width, h: img.height };
+
+        detecting = true;
+        updateAiUI();
+        const original = aiDetectBtn.innerText;
+        aiDetectBtn.innerText = '偵測中…';
+        try {
+            const det = await getDetector();
+            const regions = detectRegions(area);
+            const found = [];
+            for (let i = 0; i < regions.length; i++) {
+                const rg = regions[i];
+                setAiStatus(`偵測中 ${i + 1} / ${regions.length}…`);
+                await new Promise(r => setTimeout(r, 0)); // 讓狀態文字先畫出來
+                const c = document.createElement('canvas');
+                c.width = rg.w; c.height = rg.h;
+                c.getContext('2d').drawImage(img, rg.x, rg.y, rg.w, rg.h, 0, 0, rg.w, rg.h);
+                const raw = tf.RawImage.fromCanvas(c).rgb();
+                const out = await det(raw, labels, { threshold: 0.02 });
+                for (const o of out) {
+                    const b = o.box;
+                    const box = { x: rg.x + b.xmin, y: rg.y + b.ymin, w: b.xmax - b.xmin, h: b.ymax - b.ymin, label: o.label, score: o.score };
+                    if (box.w < 6 || box.h < 6) continue;
+                    // 分區偵測時略過被區塊邊緣切斷的框（交給相鄰區塊或整區偵測）
+                    if (rg.tile) {
+                        const m = 3;
+                        const cut = (b.xmin <= m && rg.x > area.x) || (b.ymin <= m && rg.y > area.y) ||
+                            (b.xmax >= rg.w - m && rg.x + rg.w < area.x + area.w) || (b.ymax >= rg.h - m && rg.y + rg.h < area.y + area.h);
+                        if (cut) continue;
+                    }
+                    found.push(box);
+                }
+            }
+            // 非極大值抑制：重疊太多的只留分數最高的
+            found.sort((a, b) => b.score - a.score);
+            const kept = [];
+            for (const f of found) {
+                if (!kept.some(k => iou(k, f) > 0.5)) kept.push(clampBox({ ...f }));
+            }
+            suggestions = kept;
+            updateAiUI();
+            requestRender();
+            showAlert(kept.length ? `AI 找到 ${kept.length} 個建議框。` : 'AI 沒有找到符合的物件，可以換個描述詞或降低信心門檻。');
+        } catch (err) {
+            console.error(err);
+            setAiStatus('');
+            showAlert('AI 偵測失敗：' + (err && err.message ? err.message : err) + '（請確認是用 Live Server 開啟，且網路可連到 jsdelivr 與 huggingface）');
+        } finally {
+            detecting = false;
+            aiDetectBtn.innerText = original;
+            updateAiUI();
+        }
+    }
+
+    function uniqueName(base) {
+        const used = new Set(boxes.map(b => b.name));
+        base = base.replace(/\s+/g, '_').replace(/[\\/:*?"<>|]/g, '_') || 'box';
+        let n = 1;
+        while (used.has(`${base}_${String(n).padStart(2, '0')}`)) n++;
+        return `${base}_${String(n).padStart(2, '0')}`;
+    }
+
+    function acceptSuggestion(sg, select = true) {
+        const b = addBox({ name: uniqueName(sg.label), x: sg.x, y: sg.y, w: sg.w, h: sg.h }, select);
+        suggestions = suggestions.filter(s => s !== sg);
+        return b;
+    }
+
+    canvas.addEventListener('dblclick', e => {
+        if (!img) return;
+        const s = pointerPos(e);
+        const p = screenToImage(s.x, s.y);
+        let best = null;
+        for (const sg of visibleSuggestions()) {
+            if (p.x >= sg.x && p.x <= sg.x + sg.w && p.y >= sg.y && p.y <= sg.y + sg.h && (!best || sg.w * sg.h < best.w * best.h)) best = sg;
+        }
+        if (!best || !canAddBox()) return;
+        pushHistory();
+        acceptSuggestion(best);
+        onBoxesChanged();
+    });
+
+    aiAcceptAllBtn.addEventListener('click', () => {
+        const vis = visibleSuggestions().sort((a, b) => b.score - a.score);
+        const room = getMaxBoxes() - boxes.length;
+        if (room <= 0) { canAddBox(); return; }
+        const take = vis.slice(0, room);
+        pushHistory();
+        take.forEach(sg => acceptSuggestion(sg, false));
+        onBoxesChanged();
+        const left = vis.length - take.length;
+        showAlert(`已採用 ${take.length} 個建議框` + (left ? `，還有 ${left} 個因達到框數上限未採用（分數較低的）。` : '。'));
+    });
+
+    aiClearBtn.addEventListener('click', () => { suggestions = []; updateAiUI(); requestRender(); });
+    aiThreshold.addEventListener('input', () => { updateAiUI(); requestRender(); });
+    aiDetectBtn.addEventListener('click', runDetection);
+
+    // ---------- 送到 Tool 4 ----------
+    // 切圖暫存在瀏覽器的 IndexedDB，Tool 4 開啟時讀取後刪除
+    function idbOpen() {
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open('imgarray', 1);
+            req.onupgradeneeded = () => req.result.createObjectStore('transfer');
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+    }
+    async function idbPut(key, value) {
+        const db = await idbOpen();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('transfer', 'readwrite');
+            tx.objectStore('transfer').put(value, key);
+            tx.oncomplete = () => { db.close(); resolve(); };
+            tx.onerror = () => { db.close(); reject(tx.error); };
+        });
+    }
+
+    sendToTool4Btn.addEventListener('click', async () => {
+        if (!img || !boxes.length) return;
+        sendToTool4Btn.disabled = true;
+        const original = sendToTool4Btn.innerText;
+        try {
+            const pad = Math.max(2, String(boxes.length).length);
+            const list = [];
+            for (let i = 0; i < boxes.length; i++) {
+                sendToTool4Btn.innerText = `準備中 ${i + 1} / ${boxes.length}`;
+                const b = boxes[i];
+                list.push({ name: `${String(i + 1).padStart(pad, '0')}_${sanitizeName(b.name)}`, blob: await cropToBlob(b), prompt: '' });
+            }
+            await idbPut('tool3-to-tool4', { createdAt: Date.now(), source: imgName, items: list });
+            // 在工具箱 (index.html) 裡就請它切到 Tool 4；單獨開啟時直接換頁
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage({ type: 'imgarray:open-tool', file: 'tool4.html' }, '*');
+            } else {
+                location.href = 'tool4.html';
+            }
+        } catch (err) {
+            console.error(err);
+            showAlert('送到 Tool 4 失敗：' + err.message);
+        } finally {
+            sendToTool4Btn.innerText = original;
+            updateCountInfo();
+        }
+    });
+
+    // ---------- 送到本機去背工具（ImageMatting） ----------
+    // 本機去背工具用 run.bat 啟動，伺服器在 127.0.0.1:7861（被占用時會往後換連接埠）。
+    // 切圖直接傳給本機伺服器，所以放在 GitHub Pages 上的這一頁也能送。
+    const LOCAL_PORTS = [7861, 7862, 7863];
+    async function findLocalTool() {
+        for (const port of LOCAL_PORTS) {
+            try {
+                const ctrl = new AbortController();
+                const t = setTimeout(() => ctrl.abort(), 1500);
+                const res = await fetch(`http://127.0.0.1:${port}/api/inbox/ping`, { signal: ctrl.signal });
+                clearTimeout(t);
+                if (res.ok) return `http://127.0.0.1:${port}`;
+            } catch (e) { /* 換下一個 */ }
+        }
+        return null;
+    }
+
+    sendToLocalBtn.addEventListener('click', async () => {
+        if (!img || !boxes.length) return;
+        sendToLocalBtn.disabled = true;
+        const original = sendToLocalBtn.innerText;
+        try {
+            sendToLocalBtn.innerText = '連線本機去背工具中…';
+            const base = await findLocalTool();
+            if (!base) {
+                showAlert('連不到本機去背工具：請先點 ImageMatting 資料夾裡的 run.bat 啟動，再按一次。（瀏覽器如果詢問是否允許存取區域網路裝置，請按允許）');
+                return;
+            }
+            const pad = Math.max(2, String(boxes.length).length);
+            const fd = new FormData();
+            const names = [];
+            for (let i = 0; i < boxes.length; i++) {
+                sendToLocalBtn.innerText = `準備中 ${i + 1} / ${boxes.length}`;
+                const b = boxes[i];
+                const name = `${String(i + 1).padStart(pad, '0')}_${sanitizeName(b.name)}`;
+                names.push(name);
+                fd.append('images', await cropToBlob(b), name + '.png');
+            }
+            fd.append('names', JSON.stringify(names));
+            fd.append('source', imgName || '');
+            sendToLocalBtn.innerText = '傳送中…';
+            const res = await fetch(`${base}/api/inbox`, { method: 'POST', body: fd });
+            if (!res.ok) throw new Error(`本機去背工具回應 ${res.status}`);
+            const info = await res.json();
+            // 去背工具已經開著就會自己收到圖；沒開的話幫忙開一個分頁
+            if (!info.viewer_open && !window.open(base + '/', 'imagematting')) {
+                showAlert(`已送出 ${boxes.length} 張切圖。瀏覽器擋住了新分頁，請自己打開 ${base}/`);
+                return;
+            }
+            showAlert(`已送出 ${boxes.length} 張切圖到本機去背工具，請切換到去背工具的分頁。`);
+        } catch (err) {
+            console.error(err);
+            showAlert('送到本機去背工具失敗：' + err.message);
+        } finally {
+            sendToLocalBtn.innerText = original;
+            updateCountInfo();
+        }
+    });
+    canvas.tabIndex = 0;
+    canvas.style.outline = 'none';
+    new ResizeObserver(resizeCanvas).observe(viewport);
+    resizeCanvas();
+    updateCountInfo();
+</script>
+</body>
+</html>

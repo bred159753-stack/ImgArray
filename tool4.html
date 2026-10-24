@@ -1,0 +1,1532 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>批次 AI 去背工具 (Tool 4)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        :root {
+            /* Warm Earth & Dusk Atmospheric Palette (與 tool1 / tool2 一致) */
+            --card-glass: rgba(255, 255, 255, 0.07);
+            --border-glass: rgba(255, 255, 255, 0.18);
+            --border-glass-light: rgba(255, 255, 255, 0.28);
+            --border-subtle: rgba(255, 255, 255, 0.08);
+
+            --text-primary: #f5f2ee;
+            --text-secondary: #cbbfb6;
+            --text-muted: #8e837a;
+
+            --accent-black: #0d0c0e;
+            --accent-white: #ffffff;
+            --accent-warm: #d3bead;
+            --accent-gold: #e2b067;
+            --accent-gold-soft: rgba(226, 176, 103, 0.2);
+            --danger-red: #e05d53;
+
+            --font-main: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", sans-serif;
+            --radius-pill: 9999px;
+            --radius-xl: 26px;
+            --radius-lg: 18px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: var(--font-main);
+            display: flex;
+            height: 100vh;
+            color: var(--text-primary);
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+            background-color: #1a1518;
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(200, 160, 140, 0.25) 0%, rgba(0, 0, 0, 0) 70%),
+                radial-gradient(ellipse 60% 40% at 85% 90%, rgba(160, 110, 95, 0.20) 0%, rgba(0, 0, 0, 0) 70%),
+                linear-gradient(135deg, rgba(18, 14, 18, 0.70) 0%, rgba(10, 8, 10, 0.85) 100%),
+                url('image/bg.jpg'),
+                linear-gradient(135deg, #2a2225 0%, #131013 100%);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        #app-body {
+            display: flex;
+            width: calc(100vw - 32px);
+            height: calc(100vh - 32px);
+            margin: 16px;
+            border-radius: var(--radius-xl);
+            overflow: hidden;
+            background: rgba(20, 16, 18, 0.25);
+            border: 1px solid var(--border-glass-light);
+            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.75), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+            position: relative;
+        }
+
+        /* 左側控制面板 */
+        #sidebar {
+            width: 350px;
+            background: rgba(20, 16, 18, 0.45);
+            backdrop-filter: blur(12px) saturate(130%);
+            -webkit-backdrop-filter: blur(12px) saturate(130%);
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            border-right: 1px solid var(--border-subtle);
+            flex-shrink: 0;
+            z-index: 10;
+            box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.08);
+        }
+        #sidebar::-webkit-scrollbar { width: 5px; height: 5px; }
+        #sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 999px; }
+
+        #sidebar .app-title {
+            font-size: 14px;
+            font-weight: 700;
+            padding: 4px 4px 12px;
+            border-bottom: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        #sidebar .app-title .brand-badge {
+            font-size: 10px;
+            font-weight: 800;
+            background: var(--accent-white);
+            color: var(--accent-black);
+            padding: 2px 8px;
+            border-radius: var(--radius-pill);
+            letter-spacing: 0.06em;
+        }
+
+        .control-group {
+            background: var(--card-glass);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            padding: 14px 16px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-glass);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 24px rgba(0, 0, 0, 0.15);
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+        .control-group:hover { border-color: rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.09); }
+
+        .control-group h3 {
+            font-size: 11px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .control-group h3 .num-tag { font-size: 13px; font-weight: 800; color: var(--accent-warm); letter-spacing: -0.02em; }
+
+        label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            margin: 8px 0;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        input[type="number"], input[type="text"], select {
+            width: 85px;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--border-glass);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-family: inherit;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        input[type="text"] { width: 100%; }
+        input[type="number"]:focus, input[type="text"]:focus, select:focus {
+            outline: none;
+            border-color: var(--accent-white);
+            background: rgba(0, 0, 0, 0.55);
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
+        }
+        input:disabled, select:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        input[type="range"] { accent-color: var(--accent-white); cursor: pointer; }
+        input[type="checkbox"] { accent-color: var(--accent-white); cursor: pointer; width: 14px; height: 14px; flex-shrink: 0; }
+
+        input[type="file"] { font-family: inherit; font-size: 11px; color: var(--text-secondary); }
+        input[type="file"]::file-selector-button {
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 700;
+            background: var(--accent-black);
+            color: var(--accent-white);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-pill);
+            padding: 6px 14px;
+            margin-right: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        input[type="file"]::file-selector-button:hover { background: var(--accent-white); color: var(--accent-black); transform: translateY(-1px); }
+
+        .row-inputs { display: flex; gap: 8px; }
+        .row-inputs label { flex: 1; margin: 4px 0; }
+        .row-inputs input[type="number"] { width: 78px; }
+
+        .check-row { color: var(--text-primary); font-weight: 600; cursor: pointer; gap: 10px; }
+
+        .hint { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+
+        button {
+            background: var(--accent-white);
+            color: var(--accent-black);
+            border: 1px solid transparent;
+            padding: 10px 16px;
+            border-radius: var(--radius-pill);
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            width: 100%;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        button:hover { background: var(--accent-warm); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3); }
+        button:active { transform: translateY(1px); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        button.export-btn {
+            background: var(--accent-black);
+            color: var(--accent-white);
+            border: 1px solid var(--border-glass-light);
+            margin-top: 8px;
+        }
+        button.export-btn:hover:not(:disabled) { background: var(--accent-white); color: var(--accent-black); }
+        button.danger-btn { background: transparent; color: var(--danger-red); border: 1px solid rgba(224, 93, 83, 0.5); margin-top: 8px; box-shadow: none; }
+        button.danger-btn:hover:not(:disabled) { background: var(--danger-red); color: var(--accent-white); }
+
+        .btn-row { display: flex; gap: 8px; }
+        .btn-row button { margin-top: 8px; padding: 8px 10px; }
+
+        /* 中央預覽區 */
+        #main { flex: 1; display: flex; flex-direction: column; background: transparent; overflow: hidden; position: relative; min-width: 0; }
+
+        #toolbar {
+            background: rgba(20, 16, 18, 0.45);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 0 20px;
+            height: 54px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--border-subtle);
+            font-size: 12px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+            z-index: 10;
+            position: relative;
+        }
+        #toolbar input[type="range"] { flex: 1; max-width: 140px; }
+        #toolbar button {
+            width: auto;
+            padding: 5px 14px;
+            font-size: 11px;
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            border: 1px solid var(--border-glass);
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        #toolbar button:hover:not(:disabled) { background: var(--accent-white); color: var(--accent-black); }
+        #boxCountInfo { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+        #boxCountInfo b { color: var(--text-primary); }
+        #boxCountInfo.full b { color: var(--accent-gold); }
+
+        .tips-wrapper { margin-left: auto; position: relative; }
+        .tips-icon-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-glass);
+            color: var(--accent-white);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 800;
+            transition: all 0.2s ease;
+        }
+        .tips-icon-btn:hover { background: var(--accent-white); color: var(--accent-black); }
+
+        .note-popup {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 42px;
+            background: rgba(25, 20, 22, 0.92);
+            backdrop-filter: blur(24px);
+            border: 1px solid var(--border-glass-light);
+            border-radius: var(--radius-lg);
+            padding: 16px 18px;
+            width: 340px;
+            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.7);
+            z-index: 100;
+            font-size: 12px;
+            line-height: 1.7;
+        }
+        .note-popup.show { display: block; }
+        .note-popup h4 { font-size: 11px; font-weight: 700; color: var(--accent-warm); text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px; margin-bottom: 10px; }
+        .note-popup ul { list-style: none; }
+        .note-popup li { margin-bottom: 6px; display: flex; align-items: flex-start; gap: 6px; color: var(--text-secondary); }
+        .note-popup li b { color: var(--text-primary); white-space: nowrap; min-width: 92px; }
+
+        /* 中央畫布視域 */
+        #viewport {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            background: transparent;
+            transition: background-color 0.4s ease;
+        }
+        #viewport.has-loaded-content {
+            background-color: rgba(20, 16, 18, 0.78);
+            background-image:
+                radial-gradient(circle at 50% 50%, rgba(200, 160, 140, 0.08) 0, rgba(0,0,0,0) 65%),
+                radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 0);
+            background-size: auto, 24px 24px;
+        }
+        #viewport.drag-over { box-shadow: inset 0 0 0 3px var(--accent-gold); }
+        #stageCanvas { position: absolute; inset: 0; display: block; touch-action: none; }
+
+        .empty-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 13px; letter-spacing: 0.04em; pointer-events: none; text-align: center; line-height: 1.8; }
+        #viewport.has-loaded-content .empty-hint { display: none; }
+
+        /* 右側框選清單 */
+        #right-panel {
+            width: 270px;
+            background: rgba(20, 16, 18, 0.45);
+            backdrop-filter: blur(12px) saturate(130%);
+            -webkit-backdrop-filter: blur(12px) saturate(130%);
+            border-left: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            z-index: 10;
+            overflow: hidden;
+            box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.08);
+        }
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 0 16px;
+            height: 54px;
+            flex-shrink: 0;
+        }
+        .panel-header h2 { font-size: 12px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.06em; }
+        .panel-header span { font-size: 11px; color: var(--text-muted); }
+
+        #box-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            align-content: start;
+        }
+        #box-list::-webkit-scrollbar { width: 5px; }
+        #box-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 999px; }
+
+        .box-item {
+            background: var(--card-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-md);
+            padding: 8px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+            user-select: none;
+            min-width: 0;
+        }
+        .box-item:hover { border-color: var(--accent-white); transform: translateY(-2px); background: rgba(255, 255, 255, 0.16); }
+        .box-item.active {
+            border: 2px solid var(--accent-gold);
+            background: rgba(226, 176, 103, 0.12);
+            box-shadow: 0 0 0 4px var(--accent-gold-soft);
+        }
+        .box-thumb {
+            width: 100%;
+            height: 75px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border-radius: var(--radius-sm);
+            background-color: rgba(0,0,0,0.25);
+        }
+        .box-thumb canvas { max-width: 100%; max-height: 100%; pointer-events: none; }
+        .box-item .box-name { font-size: 10px; color: var(--text-secondary); margin-top: 6px; text-align: center; word-break: break-all; font-weight: 600; max-width: 100%; }
+        .box-item .box-size { font-size: 9px; color: var(--text-muted); }
+        .box-item.active .box-name { color: var(--text-primary); }
+
+        #alert { color: var(--accent-gold); font-size: 11px; line-height: 1.4; font-weight: 600; min-height: 1em; }
+
+        /* ---------- tool4 專用 ---------- */
+        #viewport.has-loaded-content.checker {
+            background-color: #2a2528;
+            background-image:
+                linear-gradient(45deg, rgba(255,255,255,0.07) 25%, transparent 25%),
+                linear-gradient(-45deg, rgba(255,255,255,0.07) 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.07) 75%),
+                linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.07) 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+        .mode-tag { font-size: 10px; font-weight: 800; padding: 3px 9px; border-radius: var(--radius-pill); background: rgba(255,255,255,0.1); color: var(--text-primary); white-space: nowrap; }
+        .view-toggle { display: flex; gap: 4px; }
+        .view-toggle button.on { background: var(--accent-white) !important; color: var(--accent-black) !important; }
+
+        .status-badge { font-size: 9px; font-weight: 800; padding: 1px 7px; border-radius: var(--radius-pill); margin-top: 4px; }
+        .status-badge.todo { background: rgba(255,255,255,0.1); color: var(--text-muted); }
+        .status-badge.busy { background: var(--accent-gold-soft); color: var(--accent-gold); }
+        .status-badge.done { background: rgba(110, 200, 140, 0.18); color: #8fdcaa; }
+        .status-badge.fail { background: rgba(224, 93, 83, 0.2); color: var(--danger-red); }
+        .box-item.multi { box-shadow: 0 0 0 2px var(--accent-warm); background: rgba(211, 190, 173, 0.12); }
+        .box-item.multi.active { box-shadow: 0 0 0 2px var(--accent-warm), 0 0 0 5px var(--accent-gold-soft); }
+        .box-item .box-prompt {
+            width: 100%;
+            margin-top: 6px;
+            resize: none;
+            font-family: inherit;
+            font-size: 10px;
+            line-height: 1.35;
+            padding: 4px 6px;
+            border-radius: 6px;
+            border: 1px solid var(--border-glass);
+            background: rgba(0, 0, 0, 0.35);
+            color: var(--text-primary);
+        }
+        .box-item .box-prompt::placeholder { color: var(--text-muted); }
+        .box-item .box-prompt:focus { outline: none; border-color: var(--accent-white); background: rgba(0, 0, 0, 0.55); }
+        #list-actions { display: flex; gap: 6px; padding: 10px 12px 0; flex-shrink: 0; }
+        #list-actions button { width: auto; flex: 1; padding: 5px 8px; font-size: 10px; background: rgba(255,255,255,0.1); color: var(--text-primary); border: 1px solid var(--border-glass); box-shadow: none; }
+        #list-actions button:hover { background: var(--accent-white); color: var(--accent-black); }
+        #thumb-toggle { padding: 8px 12px 0; flex-shrink: 0; }
+        #thumb-toggle button { width: auto; flex: 1; padding: 5px 8px; font-size: 10px; background: rgba(255,255,255,0.1); color: var(--text-primary); border: 1px solid var(--border-glass); box-shadow: none; }
+        #stopBtn { background: var(--danger-red); color: var(--accent-white); }
+        #stopBtn:hover:not(:disabled) { background: #f07a70; }
+        .box-thumb.checker {
+            background-color: #3a3336;
+            background-image: linear-gradient(45deg, rgba(255,255,255,0.1) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,0.1) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.1) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.1) 75%);
+            background-size: 10px 10px;
+            background-position: 0 0, 0 5px, 5px -5px, -5px 0px;
+        }
+        .source-row { display: flex; gap: 12px; font-size: 12px; margin-bottom: 8px; }
+        .source-row label { margin: 0; gap: 6px; justify-content: flex-start; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="app-body">
+    <!-- 左側面板 -->
+    <div id="sidebar">
+        <div class="app-title">
+            <span>批次 AI 去背工具</span>
+            <span class="brand-badge">Tool 4</span>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">01</span> 載入圖片</h3>
+            <div class="source-row">
+                <label><input type="radio" name="sourceType" value="folder" checked> 圖片資料夾</label>
+                <label><input type="radio" name="sourceType" value="files"> 多張圖片</label>
+            </div>
+            <div id="folderInputContainer">
+                <input type="file" id="folderInput" webkitdirectory directory multiple style="width:100%">
+            </div>
+            <div id="filesInputContainer" style="display:none;">
+                <input type="file" id="filesInput" accept="image/*" multiple style="width:100%">
+            </div>
+            <label class="check-row" style="margin-top:10px">載入時保留已有圖片 <input type="checkbox" id="appendMode"></label>
+            <div class="hint">也可以直接把圖片拖進中間畫布，或在 Tool 3 按「送到 Tool 4 去背」。</div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">02</span> 去背模型</h3>
+            <div class="hint" style="color:var(--text-primary)">BEN2 Base（MIT 授權，可商用）</div>
+            <div id="modelInfo" class="hint" style="color:var(--accent-warm)"></div>
+            <div class="hint"><b>沒填提示詞</b> = 自動抓主體；<b>有填提示詞</b> = 先用 OWL-ViT（Apache 2.0，可商用）找出提示詞指的東西，只保留那一塊。</div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">03</span> 處理設定</h3>
+            <label>透明門檻 <span style="display:flex; align-items:center; gap:8px;"><input type="range" id="alphaCutoff" min="0" max="128" value="12" style="width:110px"><b id="alphaCutoffVal" style="width:28px; color:var(--text-primary)">12</b></span></label>
+            <label>邊緣羽化 (px) <input type="number" id="featherPx" value="0" min="0" max="20"></label>
+            <label class="check-row">實體部分補成不透明 <input type="checkbox" id="solidOn" checked></label>
+            <label>實體判定門檻 <span style="display:flex; align-items:center; gap:8px;"><input type="range" id="solidThreshold" min="20" max="240" value="100" style="width:110px"><b id="solidThresholdVal" style="width:28px; color:var(--text-primary)">100</b></span></label>
+            <label>保留柔邊寬度 (px) <input type="number" id="solidEdge" value="2" min="0" max="20"></label>
+            <label class="check-row">填滿內部破洞 <input type="checkbox" id="solidFillHoles"></label>
+            <div class="hint">AI 判斷「有點像主體」的地方會變半透明。勾選「補成不透明」後，透明度高於門檻的區域會變成完全不透明，只在外緣留幾個像素的柔邊。還有半透明就把門檻調低；背景被帶進來就調高。「填滿內部破洞」會把被主體圍住的透明區補滿，中空的東西（例如戒指）不要勾。調整後會立即重新合成，不用重跑模型。</div>
+            <label>提示詞信心門檻 <input type="number" id="promptThreshold" value="0.05" min="0.01" max="0.9" step="0.01"></label>
+            <label style="display:block">全部提示詞（英文）
+                <input type="text" id="bulkPrompt" placeholder="例如 golden ring、game icon，留空 = 自動主體" style="margin-top:6px">
+            </label>
+            <div class="btn-row">
+                <button class="export-btn" id="applyPromptAllBtn">套用到全部</button>
+                <button class="export-btn" id="applyPromptSelectedBtn">套用到選取的</button>
+            </div>
+            <button class="export-btn" id="applyPromptEmptyBtn">只套用到提示詞空白的</button>
+            <button id="processAllBtn" disabled style="margin-top:12px">處理全部圖片</button>
+            <button id="processSelectedBtn" disabled style="margin-top:8px">處理選取的圖片</button>
+            <div class="btn-row">
+                <button class="export-btn" id="processOneBtn" disabled>只處理目前這張</button>
+                <button class="export-btn" id="processTodoBtn" disabled>處理未完成的</button>
+            </div>
+            <button id="stopBtn" disabled style="margin-top:8px">停止處理</button>
+            <div id="aiStatus" class="hint"></div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">04</span> 匯出</h3>
+            <label class="check-row">裁掉透明邊 <input type="checkbox" id="trimTransparent"></label>
+            <label>檔名後綴 <input type="text" id="fileSuffix" value="_nobg" style="width:120px"></label>
+            <label class="check-row">未處理的圖也一起匯出（原圖） <input type="checkbox" id="includeUnprocessed"></label>
+            <button id="exportZipBtn" disabled>匯出去背結果 (ZIP)</button>
+            <button class="danger-btn" id="clearAllBtn" disabled>清除所有圖片</button>
+        </div>
+
+        <div id="alert"></div>
+    </div>
+
+    <!-- 中央 -->
+    <div id="main">
+        <div id="toolbar">
+            <div class="view-toggle">
+                <button id="viewOriginalBtn" class="on">原圖</button>
+                <button id="viewResultBtn">去背結果</button>
+            </div>
+            <span class="mode-tag" id="modeTag">—</span>
+            <span id="imageInfo" style="color:var(--text-muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></span>
+            <div class="tips-wrapper">
+                <div class="tips-icon-btn" id="tipsBtn">i</div>
+                <div class="note-popup" id="tipsPopup">
+                    <h4>操作說明</h4>
+                    <ul>
+                        <li><b>點右側縮圖</b>切換目前的圖</li>
+                        <li><b>Ctrl + 點縮圖</b>加選 / 取消選取</li>
+                        <li><b>Shift + 點縮圖</b>選取一整段</li>
+                        <li><b>縮圖下方欄位</b>英文描述要保留的東西</li>
+                        <li><b>空白鍵（按住）</b>暫時看原圖</li>
+                        <li><b>← / →</b>上一張、下一張</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div id="viewport">
+            <canvas id="stageCanvas"></canvas>
+            <div class="empty-hint">請從左側載入圖片資料夾<br>或從 Tool 3 送過來</div>
+        </div>
+    </div>
+
+    <!-- 右側清單 -->
+    <div id="right-panel">
+        <div class="panel-header">
+            <h2>圖片清單</h2>
+            <span id="listInfo">0 張</span>
+        </div>
+        <div id="list-actions">
+            <button id="selectAllBtn">全選</button>
+            <button id="selectNoneBtn">取消選取</button>
+            <button id="selectFailedBtn">選未完成</button>
+        </div>
+        <div id="thumb-toggle" class="view-toggle">
+            <button id="thumbOrigBtn">原圖縮圖</button>
+            <button id="thumbResultBtn" class="on">去背縮圖</button>
+        </div>
+        <div id="box-list"></div>
+    </div>
+</div>
+
+<script>
+    // ---------- DOM ----------
+    const $ = id => document.getElementById(id);
+    const folderInput = $('folderInput');
+    const filesInput = $('filesInput');
+    const appendMode = $('appendMode');
+    const alphaCutoff = $('alphaCutoff');
+    const alphaCutoffVal = $('alphaCutoffVal');
+    const featherPx = $('featherPx');
+    const solidOn = $('solidOn'), solidThreshold = $('solidThreshold'), solidThresholdVal = $('solidThresholdVal');
+    const solidEdge = $('solidEdge'), solidFillHoles = $('solidFillHoles');
+    const promptThreshold = $('promptThreshold');
+    const bulkPrompt = $('bulkPrompt');
+    const processAllBtn = $('processAllBtn');
+    const processOneBtn = $('processOneBtn');
+    const processTodoBtn = $('processTodoBtn');
+    const processSelectedBtn = $('processSelectedBtn');
+    const stopBtn = $('stopBtn');
+    const aiStatus = $('aiStatus');
+    const trimTransparent = $('trimTransparent');
+    const fileSuffix = $('fileSuffix');
+    const includeUnprocessed = $('includeUnprocessed');
+    const exportZipBtn = $('exportZipBtn');
+    const clearAllBtn = $('clearAllBtn');
+    const alertBox = $('alert');
+    const viewOriginalBtn = $('viewOriginalBtn');
+    const viewResultBtn = $('viewResultBtn');
+    const imageInfo = $('imageInfo');
+    const modeTag = $('modeTag');
+    const viewport = $('viewport');
+    const canvas = $('stageCanvas');
+    const ctx = canvas.getContext('2d');
+    const boxList = $('box-list');
+    const listInfo = $('listInfo');
+
+    // ---------- 狀態 ----------
+    // item: { id, name, bitmap, width, height, prompt, status, alpha, result (canvas), error }
+    let items = [];
+    let currentId = null;
+    let nextId = 1;
+    let viewMode = 'original';   // 'original' | 'result'
+    let peekOriginal = false;
+    let busy = false;
+    let stopRequested = false;
+    let selectedIds = new Set();   // 清單多選
+    let selectAnchor = null;       // Shift 範圍選取的起點
+    let dpr = window.devicePixelRatio || 1;
+    let renderQueued = false;
+    let layout = { scale: 1, ox: 0, oy: 0 };
+
+    function showAlert(msg) {
+        alertBox.innerText = msg || '';
+        if (msg) {
+            clearTimeout(showAlert._t);
+            showAlert._t = setTimeout(() => { alertBox.innerText = ''; }, 6000);
+        }
+    }
+    // 狀態列；超過 3 秒的步驟會顯示經過秒數，讓人知道還在跑
+    let statusText = '', statusSince = 0;
+    function setStatus(text) {
+        if ((text || '') !== statusText) { statusText = text || ''; statusSince = Date.now(); }
+        aiStatus.innerText = statusText;
+    }
+    setInterval(() => {
+        if (!statusText) return;
+        const sec = Math.floor((Date.now() - statusSince) / 1000);
+        if (sec >= 3) aiStatus.innerText = `${statusText}（${sec} 秒）`;
+    }, 1000);
+    function currentItem() { return items.find(i => i.id === currentId) || null; }
+    function itemMode(item) {
+        if (item.prompt.trim()) return 'prompt';
+        return 'auto';
+    }
+    const MODE_LABEL = { auto: '自動主體', prompt: '依提示詞' };
+
+    // ---------- 載入圖片 ----------
+    const IMAGE_RE = /\.(png|jpe?g|webp|gif|bmp)$/i;
+
+    function naturalCompare(a, b) {
+        return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    }
+
+    async function addImages(entries, sourceLabel) {
+        // entries: [{ name, blob, prompt? }]
+        if (!entries.length) { showAlert('沒有找到可用的圖片。'); return; }
+        if (!appendMode.checked) clearAll(false);
+        let ok = 0;
+        for (const en of entries) {
+            try {
+                const bitmap = await createImageBitmap(en.blob);
+                items.push({
+                    id: nextId++,
+                    name: en.name,
+                    bitmap,
+                    width: bitmap.width,
+                    height: bitmap.height,
+                    prompt: en.prompt || '',
+                    status: 'todo',
+                    result: null,
+                    error: ''
+                });
+                ok++;
+            } catch (err) {
+                console.warn('無法讀取', en.name, err);
+            }
+        }
+        if (currentId === null && items.length) currentId = items[0].id;
+        viewport.classList.add('has-loaded-content');
+        onItemsChanged();
+        onCurrentChanged();
+        showAlert(`已載入 ${ok} 張圖片${sourceLabel ? '（' + sourceLabel + '）' : ''}。`);
+    }
+
+    function filesToEntries(files) {
+        return [...files]
+            .filter(f => f.type.startsWith('image/') || IMAGE_RE.test(f.name))
+            .map(f => ({ path: f.webkitRelativePath || f.name, name: f.name.replace(/\.[^.]+$/, ''), blob: f }))
+            .sort((a, b) => naturalCompare(a.path, b.path));
+    }
+
+    folderInput.addEventListener('change', e => { addImages(filesToEntries(e.target.files), '資料夾'); folderInput.value = ''; });
+    filesInput.addEventListener('change', e => { addImages(filesToEntries(e.target.files)); filesInput.value = ''; });
+    document.querySelectorAll('input[name="sourceType"]').forEach(r => r.addEventListener('change', () => {
+        const folder = document.querySelector('input[name="sourceType"]:checked').value === 'folder';
+        $('folderInputContainer').style.display = folder ? 'block' : 'none';
+        $('filesInputContainer').style.display = folder ? 'none' : 'block';
+    }));
+
+    viewport.addEventListener('dragover', e => { e.preventDefault(); viewport.classList.add('drag-over'); });
+    viewport.addEventListener('dragleave', () => viewport.classList.remove('drag-over'));
+    viewport.addEventListener('drop', e => {
+        e.preventDefault();
+        viewport.classList.remove('drag-over');
+        addImages(filesToEntries(e.dataTransfer.files), '拖曳');
+    });
+
+    function clearAll(notify = true) {
+        items.forEach(i => i.bitmap && i.bitmap.close && i.bitmap.close());
+        items = [];
+        currentId = null;
+        selectedIds = new Set();
+        selectAnchor = null;
+        if (notify) {
+            viewport.classList.remove('has-loaded-content');
+            onItemsChanged();
+            onCurrentChanged();
+        }
+    }
+    clearAllBtn.addEventListener('click', () => {
+        if (!items.length || !confirm(`確定要清除全部 ${items.length} 張圖片嗎？`)) return;
+        clearAll(true);
+    });
+
+    // ---------- 從 Tool 3 接收（IndexedDB 暫存） ----------
+    const TRANSFER_KEY = 'tool3-to-tool4';
+    function idbOpen() {
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open('imgarray', 1);
+            req.onupgradeneeded = () => req.result.createObjectStore('transfer');
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+    }
+    async function idbTake(key) {
+        const db = await idbOpen();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('transfer', 'readwrite');
+            const store = tx.objectStore('transfer');
+            const getReq = store.get(key);
+            getReq.onsuccess = () => { store.delete(key); };
+            tx.oncomplete = () => { db.close(); resolve(getReq.result); };
+            tx.onerror = () => { db.close(); reject(tx.error); };
+        });
+    }
+    async function receiveFromTool3() {
+        try {
+            const data = await idbTake(TRANSFER_KEY);
+            if (!data || !Array.isArray(data.items) || !data.items.length) return;
+            await addImages(data.items.map(i => ({ name: i.name, blob: i.blob, prompt: i.prompt || '' })), '來自 Tool 3');
+        } catch (err) {
+            console.warn('讀取 Tool 3 傳來的圖片失敗', err);
+        }
+    }
+
+    // ---------- 右側清單 ----------
+    const STATUS_TEXT = { todo: '未處理', busy: '處理中', done: '完成', fail: '失敗' };
+    function makeThumb(source, w, h) {
+        const max = 110;
+        const s = Math.min(1, max / Math.max(w, h));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(w * s));
+        c.height = Math.max(1, Math.round(h * s));
+        const cx = c.getContext('2d');
+        cx.imageSmoothingQuality = 'high';
+        cx.drawImage(source, 0, 0, c.width, c.height);
+        return c;
+    }
+    // 縮圖顯示原圖或去背結果
+    let thumbMode = 'result';
+    function setThumbMode(m) {
+        thumbMode = m;
+        $('thumbOrigBtn').classList.toggle('on', m === 'original');
+        $('thumbResultBtn').classList.toggle('on', m === 'result');
+        renderList();
+    }
+    $('thumbOrigBtn').addEventListener('click', () => setThumbMode('original'));
+    $('thumbResultBtn').addEventListener('click', () => setThumbMode('result'));
+
+    function renderList() {
+        // 清單重建時保留正在輸入的提示詞欄位焦點
+        const focused = document.activeElement && document.activeElement.classList.contains('box-prompt') ? {
+            id: parseInt(document.activeElement.dataset.id, 10),
+            start: document.activeElement.selectionStart,
+            end: document.activeElement.selectionEnd
+        } : null;
+        const scrollTop = boxList.scrollTop;
+        boxList.innerHTML = '';
+        items.forEach((it, i) => {
+            const el = document.createElement('div');
+            el.className = 'box-item' + (it.id === currentId ? ' active' : '') + (selectedIds.has(it.id) ? ' multi' : '');
+            el.dataset.id = it.id;
+            const thumb = document.createElement('div');
+            const showResult = thumbMode === 'result' && it.result;
+            thumb.className = 'box-thumb' + (showResult ? ' checker' : '');
+            thumb.appendChild(makeThumb(showResult ? it.result : it.bitmap, it.width, it.height));
+            const name = document.createElement('div');
+            name.className = 'box-name';
+            name.innerText = `${String(i + 1).padStart(2, '0')} ${it.name}`;
+            const prompt = document.createElement('textarea');
+            prompt.className = 'box-prompt';
+            prompt.rows = 2;
+            prompt.dataset.id = it.id;
+            prompt.placeholder = '要保留的東西（英文），留空 = 自動';
+            prompt.value = it.prompt;
+            prompt.addEventListener('click', e => e.stopPropagation());
+            prompt.addEventListener('focus', () => { if (currentId !== it.id) { currentId = it.id; onCurrentChanged(); updateListClasses(); } });
+            prompt.addEventListener('input', () => {
+                it.prompt = prompt.value;
+                if (it.id === currentId) modeTag.innerText = MODE_LABEL[itemMode(it)];
+            });
+            prompt.addEventListener('keydown', e => {
+                e.stopPropagation();
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); prompt.blur(); }
+            });
+            const badge = document.createElement('div');
+            badge.className = 'status-badge ' + it.status;
+            badge.innerText = STATUS_TEXT[it.status] + (it.status === 'fail' && it.error ? '：' + it.error.slice(0, 20) : '');
+            badge.title = it.error || '';
+            el.append(thumb, name, badge, prompt);
+            el.addEventListener('click', e => onListClick(it.id, e));
+            boxList.appendChild(el);
+        });
+        boxList.scrollTop = scrollTop;
+        listInfo.innerText = selectedIds.size ? `${items.length} 張（選取 ${selectedIds.size}）` : `${items.length} 張`;
+        if (focused) {
+            const ta = boxList.querySelector(`.box-prompt[data-id="${focused.id}"]`);
+            if (ta) { ta.focus({ preventScroll: true }); ta.setSelectionRange(focused.start, focused.end); }
+        }
+    }
+
+    function updateListClasses() {
+        boxList.querySelectorAll('.box-item').forEach(el => {
+            const id = parseInt(el.dataset.id, 10);
+            el.classList.toggle('active', id === currentId);
+            el.classList.toggle('multi', selectedIds.has(id));
+        });
+        listInfo.innerText = selectedIds.size ? `${items.length} 張（選取 ${selectedIds.size}）` : `${items.length} 張`;
+        processSelectedBtn.disabled = !selectedIds.size || busy;
+        processSelectedBtn.innerText = selectedIds.size ? `處理選取的圖片（${selectedIds.size} 張）` : '處理選取的圖片';
+    }
+
+    // 點縮圖：一般點 = 單選；Ctrl = 加選/取消；Shift = 範圍
+    function onListClick(id, e) {
+        if (e.shiftKey && selectAnchor !== null) {
+            const a = items.findIndex(i => i.id === selectAnchor);
+            const b = items.findIndex(i => i.id === id);
+            const [from, to] = a < b ? [a, b] : [b, a];
+            if (!(e.ctrlKey || e.metaKey)) selectedIds = new Set();
+            for (let k = from; k <= to; k++) selectedIds.add(items[k].id);
+        } else if (e.ctrlKey || e.metaKey) {
+            if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
+            selectAnchor = id;
+        } else {
+            selectedIds = new Set([id]);
+            selectAnchor = id;
+        }
+        if (currentId !== id) { currentId = id; onCurrentChanged(); }
+        updateListClasses();
+    }
+    function selectItem(id) {
+        if (id === currentId) return;
+        currentId = id;
+        selectedIds = new Set([id]);
+        selectAnchor = id;
+        onCurrentChanged();
+        updateListClasses();
+        const active = boxList.querySelector('.box-item.active');
+        if (active) active.scrollIntoView({ block: 'nearest' });
+    }
+
+    function onItemsChanged() {
+        renderList();
+        const has = items.length > 0;
+        processAllBtn.disabled = !has || busy;
+        processTodoBtn.disabled = !has || busy;
+        stopBtn.disabled = !busy;
+        updateListClasses();
+        processOneBtn.disabled = !currentItem() || busy;
+        exportZipBtn.disabled = !items.some(i => i.result) && !(includeUnprocessed.checked && has);
+        clearAllBtn.disabled = !has || busy;
+    }
+
+    function onCurrentChanged() {
+        const it = currentItem();
+        processOneBtn.disabled = !it || busy;
+        modeTag.innerText = it ? MODE_LABEL[itemMode(it)] : '—';
+        imageInfo.innerText = it ? `${items.indexOf(it) + 1} / ${items.length}　${it.name}　${it.width} × ${it.height}` : '';
+        requestRender();
+    }
+
+    $('selectAllBtn').addEventListener('click', () => { selectedIds = new Set(items.map(i => i.id)); updateListClasses(); });
+    $('selectNoneBtn').addEventListener('click', () => { selectedIds = new Set(); updateListClasses(); });
+    $('selectFailedBtn').addEventListener('click', () => { selectedIds = new Set(items.filter(i => i.status !== 'done').map(i => i.id)); updateListClasses(); });
+
+    $('applyPromptAllBtn').addEventListener('click', () => {
+        items.forEach(i => { i.prompt = bulkPrompt.value.trim(); });
+        onItemsChanged(); onCurrentChanged();
+        showAlert(`已把提示詞套用到全部 ${items.length} 張。`);
+    });
+    $('applyPromptSelectedBtn').addEventListener('click', () => {
+        if (!selectedIds.size) { showAlert('請先在右側清單選取圖片（Ctrl 或 Shift + 點縮圖可多選）。'); return; }
+        items.forEach(i => { if (selectedIds.has(i.id)) i.prompt = bulkPrompt.value.trim(); });
+        onItemsChanged(); onCurrentChanged();
+        showAlert(`已把提示詞套用到選取的 ${selectedIds.size} 張。`);
+    });
+    $('applyPromptEmptyBtn').addEventListener('click', () => {
+        let n = 0;
+        items.forEach(i => { if (!i.prompt.trim()) { i.prompt = bulkPrompt.value.trim(); n++; } });
+        onItemsChanged(); onCurrentChanged();
+        showAlert(`已把提示詞套用到 ${n} 張空白的圖。`);
+    });
+    includeUnprocessed.addEventListener('change', onItemsChanged);
+
+    // ---------- 畫面繪製 ----------
+    function resizeCanvas() {
+        dpr = window.devicePixelRatio || 1;
+        const r = viewport.getBoundingClientRect();
+        canvas.width = Math.max(1, Math.round(r.width * dpr));
+        canvas.height = Math.max(1, Math.round(r.height * dpr));
+        canvas.style.width = r.width + 'px';
+        canvas.style.height = r.height + 'px';
+        requestRender();
+    }
+    function requestRender() {
+        if (renderQueued) return;
+        renderQueued = true;
+        requestAnimationFrame(() => { renderQueued = false; render(); });
+    }
+    function setView(mode) {
+        viewMode = mode;
+        viewOriginalBtn.classList.toggle('on', mode === 'original');
+        viewResultBtn.classList.toggle('on', mode === 'result');
+        requestRender();
+    }
+    viewOriginalBtn.addEventListener('click', () => setView('original'));
+    viewResultBtn.addEventListener('click', () => setView('result'));
+
+    function render() {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const it = currentItem();
+        const showResult = it && viewMode === 'result' && it.result && !peekOriginal;
+        viewport.classList.toggle('checker', !!showResult);
+        if (!it) return;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const r = viewport.getBoundingClientRect();
+        const pad = 30;
+        const scale = Math.min((r.width - pad * 2) / it.width, (r.height - pad * 2) / it.height, 6);
+        layout = { scale, ox: (r.width - it.width * scale) / 2, oy: (r.height - it.height * scale) / 2 };
+        ctx.imageSmoothingEnabled = scale < 2;
+        ctx.imageSmoothingQuality = 'high';
+
+        if (showResult) {
+            ctx.drawImage(it.result, layout.ox, layout.oy, it.width * scale, it.height * scale);
+        } else {
+            ctx.drawImage(it.bitmap, layout.ox, layout.oy, it.width * scale, it.height * scale);
+            // 提示詞偵測到的範圍
+            if (it.promptBox && itemMode(it) === 'prompt') {
+                const b = it.promptBox;
+                ctx.setLineDash([5, 3]);
+                ctx.strokeStyle = '#5ed6e6';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(layout.ox + b.x * scale, layout.oy + b.y * scale, b.w * scale, b.h * scale);
+                ctx.setLineDash([]);
+            }
+        }
+    }
+
+    window.addEventListener('keydown', e => {
+        const t = e.target;
+        const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
+        if (e.code === 'Space' && !typing) { e.preventDefault(); if (!peekOriginal) { peekOriginal = true; requestRender(); } return; }
+        if (typing) return;
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && items.length) {
+            e.preventDefault();
+            selectedIds = new Set(items.map(i => i.id));
+            updateListClasses();
+            return;
+        }
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+            const idx = items.findIndex(i => i.id === currentId);
+            const next = items[idx + (e.key === 'ArrowRight' ? 1 : -1)];
+            if (next) { e.preventDefault(); selectItem(next.id); }
+        }
+    });
+    window.addEventListener('keyup', e => { if (e.code === 'Space') { peekOriginal = false; requestRender(); } });
+
+    // ---------- AI 模型 ----------
+    // 在瀏覽器內用 transformers.js 執行；模型第一次從 Hugging Face 下載後存在瀏覽器快取。
+    const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
+    const OWL_MODEL = 'Xenova/owlvit-base-patch32';
+    let tf = null;
+    const loaded = {};   // 已載入的模型
+
+    function progressReporter(label) {
+        const files = {};
+        return info => {
+            if (info.status === 'progress' && info.total) {
+                files[info.file] = [info.loaded, info.total];
+                const l = Object.values(files).reduce((s, f) => s + f[0], 0);
+                const t = Object.values(files).reduce((s, f) => s + f[1], 0);
+                if (l >= t) setStatus(`${label}下載完成，初始化中…（CPU 模式可能要 1～3 分鐘）`);
+                else setStatus(`下載${label}中 ${(l / 1048576).toFixed(0)} / ${(t / 1048576).toFixed(0)} MB（只有第一次需要）`);
+            }
+        };
+    }
+
+    async function loadTf() {
+        if (!tf) {
+            setStatus('載入 AI 函式庫中…');
+            tf = await import(TRANSFORMERS_URL);
+        }
+        return tf;
+    }
+
+    // 去背模型：BEN2 Base（MIT）
+    const BG_MODEL = 'onnx-community/BEN2-ONNX';
+    const BG_FALLBACKS = [BG_MODEL];
+    const chosenBgModel = () => BG_MODEL;
+
+    // 每個「模型 + 裝置 + 精度」組合只要失敗過一次，這次開啟就不再使用
+    const failedCombos = new Set();
+    const modelInfo = $('modelInfo');
+
+    // 偵測顯示卡（WebGPU）能力；沒有 shader-f16 的顯示卡跑 fp16 會出錯，直接略過
+    let gpuInfo = null;
+    async function detectGpu() {
+        if (gpuInfo) return gpuInfo;
+        gpuInfo = { ok: false, f16: false };
+        try {
+            const adapter = navigator.gpu && await navigator.gpu.requestAdapter();
+            if (adapter) gpuInfo = { ok: true, f16: !!(adapter.features && adapter.features.has('shader-f16')) };
+        } catch (e) { /* 沒有 WebGPU */ }
+        return gpuInfo;
+    }
+    // 依序嘗試的裝置 / 精度。CPU 不用 fp16（CPU 版 ONNX Runtime 跑 fp16 容易直接當掉）
+    async function comboList() {
+        const g = await detectGpu();
+        const list = [];
+        if (g.ok && g.f16) list.push({ device: 'webgpu', dtype: 'fp16' });
+        if (g.ok) list.push({ device: 'webgpu', dtype: 'fp32' });
+        list.push({ device: 'wasm', dtype: 'fp32' }, { device: 'wasm', dtype: 'q8' });
+        return list;
+    }
+    const shortName = id => id.split('/').pop();
+    const deviceLabel = d => (d === 'webgpu' ? '顯示卡' : 'CPU');
+
+    // 嘗試紀錄，顯示在模型選單下方，方便看出是哪一步出問題
+    const attemptLog = [];
+    function logAttempt(text) {
+        attemptLog.push(text);
+        if (attemptLog.length > 12) attemptLog.shift();
+        renderModelInfo();
+    }
+    function renderModelInfo() {
+        const g = gpuInfo ? (gpuInfo.ok ? `WebGPU 可用${gpuInfo.f16 ? '（支援 fp16）' : '（不支援 fp16）'}` : 'WebGPU 不可用，只能用 CPU') : '';
+        const cur = loaded.bg ? `目前使用：${shortName(loaded.bg.id)} · ${deviceLabel(loaded.bg.device)} · ${loaded.bg.dtype}` : '';
+        modelInfo.innerText = [cur, g, ...attemptLog].filter(Boolean).join('\n');
+    }
+
+    // 去背模型放在獨立的背景執行緒（Web Worker）裡跑。
+    // ONNX Runtime 一旦記憶體不足當掉，同一個執行緒裡之後的模型都會跟著壞；
+    // 放在 Worker 裡，出錯就整個關掉換新的，下一個設定才能乾淨地重試。
+    const BG_WORKER_SRC = `
+let tf = null, seg = null;
+self.onmessage = async e => {
+    const m = e.data;
+    try {
+        if (m.type === 'load') {
+            tf = tf || await import(m.url);
+            seg = await tf.pipeline('background-removal', m.id, {
+                device: m.device, dtype: m.dtype,
+                progress_callback: p => { if (p.status === 'progress' && p.total) self.postMessage({ type: 'progress', file: p.file, loaded: p.loaded, total: p.total }); }
+            });
+            self.postMessage({ type: 'ok' });
+        } else if (m.type === 'run') {
+            const img = new tf.RawImage(new Uint8ClampedArray(m.data), m.w, m.h, 4).rgb();
+            let [out] = await seg(img);
+            if (out.width !== m.w || out.height !== m.h) out = await out.resize(m.w, m.h);
+            const ch = out.channels, a = new Uint8Array(m.w * m.h);
+            for (let i = 0; i < a.length; i++) a[i] = out.data[i * ch + ch - 1];
+            self.postMessage({ type: 'ok', alpha: a }, [a.buffer]);
+        }
+    } catch (err) {
+        self.postMessage({ type: 'error', error: err && err.message ? err.message : String(err) });
+    }
+};`;
+    detectGpu().then(renderModelInfo);
+    const bgWorkerUrl = URL.createObjectURL(new Blob([BG_WORKER_SRC], { type: 'text/javascript' }));
+
+    function workerCall(worker, msg, transfer, onProgress) {
+        return new Promise((resolve, reject) => {
+            worker.onmessage = e => {
+                const d = e.data;
+                if (d.type === 'progress') { if (onProgress) onProgress(d); return; }
+                if (d.type === 'error') reject(d.error); else resolve(d);
+            };
+            worker.onerror = e => { if (e.preventDefault) e.preventDefault(); reject(e.message || '背景執行緒當掉'); };
+            worker.postMessage(msg, transfer || []);
+        });
+    }
+
+    function dropBg() {
+        if (loaded.bg) { try { loaded.bg.worker.terminate(); } catch (e) { /* 忽略 */ } }
+        loaded.bg = null;
+    }
+
+    async function getBgModel() {
+        const wanted = chosenBgModel();
+        if (loaded.bg && loaded.bg.wanted === wanted) return loaded.bg;
+        dropBg();
+        const progress_callback = progressReporter('去背模型');
+        const candidates = [wanted, ...BG_FALLBACKS.filter(id => id !== wanted)];
+        const combos = await comboList();
+        let lastErr = null;
+        for (const id of candidates) {
+            for (const combo of combos) {
+                const key = `${id}|${combo.device}|${combo.dtype}`;
+                if (failedCombos.has(key)) continue;
+                setStatus(`載入 ${shortName(id)}（${deviceLabel(combo.device)} ${combo.dtype}）中…`);
+                const worker = new Worker(bgWorkerUrl, { type: 'module' });
+                try {
+                    await workerCall(worker, { type: 'load', url: TRANSFORMERS_URL, id, ...combo }, null,
+                        d => progress_callback({ status: 'progress', file: d.file, loaded: d.loaded, total: d.total }));
+                    loaded.bg = { wanted, id, key, worker, ...combo };
+                    renderModelInfo();
+                    if (id !== wanted) showAlert(`「${shortName(wanted)}」在這台電腦無法使用，已改用 ${shortName(id)}。`);
+                    return loaded.bg;
+                } catch (err) {
+                    console.warn(`載入 ${key} 失敗`, err);
+                    worker.terminate();
+                    failedCombos.add(key);
+                    lastErr = err;
+                    logAttempt(`✗ 載入 ${shortName(id)} ${deviceLabel(combo.device)} ${combo.dtype}：${errText(err)}`);
+                }
+            }
+        }
+        throw lastErr || new Error('沒有可用的去背模型（每種設定都失敗過，請重新整理頁面再試）');
+    }
+
+    // ONNX Runtime 在 WASM 出錯時只丟一個數字，轉成看得懂的說明
+    function errText(err) {
+        if (typeof err === 'number' || /^\d+$/.test(String(err))) return `ONNX Runtime 內部錯誤 ${err}（多半是記憶體不足或顯示卡不支援）`;
+        return err && err.message ? err.message : String(err);
+    }
+
+    // OWL-ViT：載入或執行失敗時，換下一個裝置 / 精度重試
+    // name: loaded 裡的欄位；combos: 依序嘗試的設定；load(combo) 回傳模型；run(model) 執行
+    async function runModel(name, combos, load, run, tag = '') {
+        await loadTf();
+        await detectGpu();
+        let lastErr = null;
+        for (const combo of combos) {
+            const key = `${name}${tag}|${combo.device}|${combo.dtype}`;
+            if (failedCombos.has(key)) continue;
+            try {
+                if (!loaded[name] || loaded[name].key !== key) {
+                    const old = loaded[name] && loaded[name].model;
+                    loaded[name] = null;
+                    try { const t = old && (old.model || old); if (t && t.dispose) await t.dispose(); } catch (e) { /* 忽略 */ }
+                    loaded[name] = { key, ...combo, model: await load(combo) };
+                }
+                return await run(loaded[name].model);
+            } catch (err) {
+                console.warn(`${key} 失敗`, err);
+                lastErr = err;
+                failedCombos.add(key);
+                const m = loaded[name] && loaded[name].model;
+                loaded[name] = null;
+                try { const t = m && (m.model || m); if (t && t.dispose) await t.dispose(); } catch (e) { /* 忽略 */ }
+            }
+        }
+        throw lastErr || new Error('沒有可用的設定');
+    }
+    const withGpu = list => (navigator.gpu && (!gpuInfo || gpuInfo.ok) ? list : list.filter(c => c.device !== 'webgpu'));
+    const OWL_COMBOS = () => withGpu([{ device: 'webgpu', dtype: 'fp32' }, { device: 'wasm', dtype: 'q8' }, { device: 'wasm', dtype: 'fp32' }]);
+
+    function withOwl(run) {
+        return runModel('owl', OWL_COMBOS(), combo =>
+            tf.pipeline('zero-shot-object-detection', OWL_MODEL, { ...combo, progress_callback: progressReporter('提示詞偵測模型') }), run);
+    }
+
+    function toCanvas(source, w, h) {
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(source, 0, 0, w, h);
+        return c;
+    }
+
+    // 主體去背：回傳 0~255 的 alpha（長度 w*h）
+    // 執行失敗時（例如記憶體不足）關掉那個 Worker，換下一個精度 / 裝置 / 模型重試同一張
+    let statusPrefix = '';
+    async function bgAlpha(sourceCanvas) {
+        const w = sourceCanvas.width, h = sourceCanvas.height;
+        let lastErr = null;
+        for (let attempt = 0; attempt < 16; attempt++) {
+            const bg = await getBgModel();
+            try {
+                setStatus(`${statusPrefix}去背中（${shortName(bg.id)} · ${deviceLabel(bg.device)}${bg.device === 'wasm' ? '，CPU 較慢' : ''}）`);
+                const data = sourceCanvas.getContext('2d').getImageData(0, 0, w, h).data.buffer;
+                const res = await workerCall(bg.worker, { type: 'run', data, w, h }, [data]);
+                return res.alpha;
+            } catch (err) {
+                console.warn(`執行 ${bg.key} 失敗`, err);
+                lastErr = err;
+                failedCombos.add(bg.key);
+                dropBg();
+                logAttempt(`✗ 執行 ${shortName(bg.id)} ${deviceLabel(bg.device)} ${bg.dtype}：${errText(err)}`);
+                showAlert(`${shortName(bg.id)}（${deviceLabel(bg.device)} ${bg.dtype}）執行失敗，自動換設定重試中…`);
+            }
+        }
+        throw lastErr;
+    }
+
+    // 提示詞：用 OWL-ViT 找出最符合的範圍
+    async function findPromptBox(it, src) {
+        await loadTf();
+        const raw = tf.RawImage.fromCanvas(src).rgb();
+        const labels = it.prompt.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+        const th = Math.max(0.01, parseFloat(promptThreshold.value) || 0.05);
+        const out = await withOwl(owl => owl(raw, labels, { threshold: th }));
+        if (!out.length) return null;
+        // 取最高分；同時合併和最高分重疊的其他框（同一物件被切成多塊時）
+        const best = out[0].box;
+        let x1 = best.xmin, y1 = best.ymin, x2 = best.xmax, y2 = best.ymax;
+        for (const o of out.slice(1)) {
+            const b = o.box;
+            const overlap = Math.max(0, Math.min(x2, b.xmax) - Math.max(x1, b.xmin)) * Math.max(0, Math.min(y2, b.ymax) - Math.max(y1, b.ymin));
+            if (overlap > 0 && o.score > out[0].score * 0.6) {
+                x1 = Math.min(x1, b.xmin); y1 = Math.min(y1, b.ymin); x2 = Math.max(x2, b.xmax); y2 = Math.max(y2, b.ymax);
+            }
+        }
+        return { x: x1, y: y1, w: x2 - x1, h: y2 - y1, score: out[0].score };
+    }
+
+    // 實體補實：透明度高於門檻、且離外緣超過「柔邊寬度」的像素一律改成完全不透明，
+    // 柔邊範圍內依距離漸變，避免主體內部出現半透明
+    function solidify(alpha, w, h) {
+        const n = w * h;
+        const th = parseInt(solidThreshold.value, 10) || 100;
+        const edge = Math.max(0, parseInt(solidEdge.value, 10) || 0);
+        const m = new Uint8Array(n);
+        for (let i = 0; i < n; i++) m[i] = alpha[i] >= th ? 1 : 0;
+        if (solidFillHoles.checked) {
+            // 從圖片邊緣往內灌水，灌不到的透明區就是被主體圍住的破洞
+            const outside = new Uint8Array(n);
+            const stack = [];
+            const push = i => { if (!m[i] && !outside[i]) { outside[i] = 1; stack.push(i); } };
+            for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
+            for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
+            while (stack.length) {
+                const i = stack.pop(), x = i % w;
+                if (x > 0) push(i - 1);
+                if (x < w - 1) push(i + 1);
+                if (i >= w) push(i - w);
+                if (i < n - w) push(i + w);
+            }
+            for (let i = 0; i < n; i++) if (!m[i] && !outside[i]) m[i] = 1;
+        }
+        // 到最近透明像素的距離（兩趟 chamfer 近似）；圖片邊界外視為主體，貼邊的主體不會被削
+        const INF = 1e9;
+        const d = new Float32Array(n);
+        for (let i = 0; i < n; i++) d[i] = m[i] ? INF : 0;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+            const i = y * w + x;
+            if (!d[i]) continue;
+            let v = d[i];
+            if (x > 0) v = Math.min(v, d[i - 1] + 1);
+            if (y > 0) {
+                v = Math.min(v, d[i - w] + 1);
+                if (x > 0) v = Math.min(v, d[i - w - 1] + 1.414);
+                if (x < w - 1) v = Math.min(v, d[i - w + 1] + 1.414);
+            }
+            d[i] = v;
+        }
+        for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) {
+            const i = y * w + x;
+            if (!d[i]) continue;
+            let v = d[i];
+            if (x < w - 1) v = Math.min(v, d[i + 1] + 1);
+            if (y < h - 1) {
+                v = Math.min(v, d[i + w] + 1);
+                if (x < w - 1) v = Math.min(v, d[i + w + 1] + 1.414);
+                if (x > 0) v = Math.min(v, d[i + w - 1] + 1.414);
+            }
+            d[i] = v;
+        }
+        const out = new Uint8Array(alpha);
+        for (let i = 0; i < n; i++) {
+            if (!m[i]) continue;
+            const ramp = d[i] > edge ? 255 : Math.round(255 * d[i] / (edge + 1));
+            if (ramp > out[i]) out[i] = ramp;
+        }
+        return out;
+    }
+
+    // 補實 + 羽化 + 門檻後套用到原圖
+    function composeResult(it, alpha) {
+        const w = it.width, h = it.height;
+        let a = solidOn.checked ? solidify(alpha, w, h) : alpha;
+        const feather = Math.max(0, parseInt(featherPx.value, 10) || 0);
+        if (feather > 0) {
+            const mc = document.createElement('canvas');
+            mc.width = w; mc.height = h;
+            const mctx = mc.getContext('2d');
+            const md = mctx.createImageData(w, h);
+            for (let i = 0; i < a.length; i++) { md.data[i * 4 + 3] = a[i]; }
+            mctx.putImageData(md, 0, 0);
+            const bc = document.createElement('canvas');
+            bc.width = w; bc.height = h;
+            const bctx = bc.getContext('2d');
+            bctx.filter = `blur(${feather}px)`;
+            bctx.drawImage(mc, 0, 0);
+            const bd = bctx.getImageData(0, 0, w, h).data;
+            a = new Uint8Array(w * h);
+            for (let i = 0; i < a.length; i++) a[i] = bd[i * 4 + 3];
+        }
+        const cutoff = parseInt(alphaCutoff.value, 10) || 0;
+        const out = toCanvas(it.bitmap, w, h);
+        const octx = out.getContext('2d');
+        const d = octx.getImageData(0, 0, w, h);
+        for (let i = 0; i < a.length; i++) {
+            const v = a[i] < cutoff ? 0 : a[i];
+            d.data[i * 4 + 3] = Math.round(d.data[i * 4 + 3] * v / 255);
+        }
+        octx.putImageData(d, 0, 0);
+        return out;
+    }
+
+    let owlBroken = '';   // 提示詞偵測失敗原因（有值代表這次改用自動去背）
+
+    async function processItem(it) {
+        it.status = 'busy';
+        it.error = '';
+        renderList();
+        const w = it.width, h = it.height;
+        const src = toCanvas(it.bitmap, w, h);
+        const mode = itemMode(it);
+        let alpha;
+        it.promptBox = null;
+
+        if (mode === 'prompt') {
+            let box;
+            try {
+                box = await findPromptBox(it, src);
+            } catch (err) {
+                // 提示詞偵測模型在這台電腦完全跑不動：改用自動去背，不讓整張失敗
+                console.warn('OWL-ViT 無法執行，改用自動去背', err);
+                owlBroken = errText(err);
+                box = { x: 0, y: 0, w, h, score: 0, skipped: true };
+            }
+            if (!box) {
+                throw new Error('找不到提示詞描述的東西');
+            }
+            it.promptBox = box.skipped ? null : box;
+            // 範圍外擴 8%，裁出來單獨去背，範圍外全部透明
+            const padX = box.w * 0.08, padY = box.h * 0.08;
+            const x = Math.max(0, Math.floor(box.x - padX)), y = Math.max(0, Math.floor(box.y - padY));
+            const x2 = Math.min(w, Math.ceil(box.x + box.w + padX)), y2 = Math.min(h, Math.ceil(box.y + box.h + padY));
+            const cw = Math.max(1, x2 - x), ch = Math.max(1, y2 - y);
+            const crop = document.createElement('canvas');
+            crop.width = cw; crop.height = ch;
+            crop.getContext('2d').drawImage(src, x, y, cw, ch, 0, 0, cw, ch);
+            const cropAlpha = await bgAlpha(crop);
+            alpha = new Uint8Array(w * h);
+            for (let yy = 0; yy < ch; yy++) {
+                for (let xx = 0; xx < cw; xx++) alpha[(y + yy) * w + (x + xx)] = cropAlpha[yy * cw + xx];
+            }
+        } else {
+            alpha = await bgAlpha(src);
+        }
+
+        it.alpha = alpha;
+        it.result = composeResult(it, alpha);
+        it.status = 'done';
+    }
+
+    async function processList(list) {
+        if (busy || !list.length) return;
+        busy = true;
+        stopRequested = false;
+        onItemsChanged();
+        let ok = 0, fail = 0, stopped = false;
+        for (let i = 0; i < list.length; i++) {
+            if (stopRequested) { stopped = true; break; }
+            const it = list[i];
+            statusPrefix = `${i + 1} / ${list.length} ${it.name}：`;
+            setStatus(`處理中 ${i + 1} / ${list.length}：${it.name}`);
+            await new Promise(r => setTimeout(r, 0));
+            try {
+                await processItem(it);
+                ok++;
+            } catch (err) {
+                console.error(err);
+                it.status = 'fail';
+                it.error = errText(err);
+                fail++;
+                // 模型下載或載入失敗時，後面也不會成功，直接停止
+                if (!tf || /fetch|network|Failed to load|import/i.test(it.error)) {
+                    showAlert('AI 模型載入失敗：' + it.error + '（請確認是用 Live Server 開啟，且網路可連到 jsdelivr 與 huggingface）');
+                    break;
+                }
+            }
+            renderList();
+            if (it.id === currentId) { if (it.result) setView('result'); onCurrentChanged(); }
+        }
+        busy = false;
+        stopRequested = false;
+        stopBtn.innerText = '停止處理';
+        setStatus('');
+        onItemsChanged();
+        onCurrentChanged();
+        if (stopped) showAlert(`已停止。完成 ${ok} 張` + (fail ? `、失敗 ${fail} 張` : '') + `，還有 ${list.length - ok - fail} 張未處理。`);
+        else if (ok || fail) showAlert(`去背完成 ${ok} 張` + (fail ? `，失敗 ${fail} 張（滑鼠移到紅色標籤可看原因）。` : '。')
+            + (owlBroken ? `\n注意：提示詞偵測（OWL-ViT）在這台電腦無法執行（${owlBroken}），有提示詞的圖已改用自動去背。` : ''));
+    }
+
+    processAllBtn.addEventListener('click', () => processList(items.slice()));
+    processTodoBtn.addEventListener('click', () => processList(items.filter(i => i.status !== 'done')));
+    processOneBtn.addEventListener('click', () => { const it = currentItem(); if (it) processList([it]); });
+    processSelectedBtn.addEventListener('click', () => processList(items.filter(i => selectedIds.has(i.id))));
+    stopBtn.addEventListener('click', () => {
+        if (!busy) return;
+        stopRequested = true;
+        stopBtn.disabled = true;
+        stopBtn.innerText = '停止中（等這張處理完）…';
+    });
+
+    // 調整門檻或羽化時，已處理的圖直接重新合成，不必重跑模型
+    function recomposeAll() {
+        alphaCutoffVal.innerText = alphaCutoff.value;
+        items.forEach(it => { if (it.alpha) it.result = composeResult(it, it.alpha); });
+        requestRender();
+        clearTimeout(recomposeAll._t);
+        recomposeAll._t = setTimeout(renderList, 200);
+    }
+    alphaCutoff.addEventListener('input', recomposeAll);
+    featherPx.addEventListener('change', recomposeAll);
+    solidThreshold.addEventListener('input', () => { solidThresholdVal.innerText = solidThreshold.value; recomposeAll(); });
+    [solidOn, solidEdge, solidFillHoles].forEach(el => el.addEventListener('change', recomposeAll));
+
+    // 刪除舊版用過、現在不用的模型快取（BiRefNet、ISNet、MODNet、SAM、RMBG），釋放瀏覽器空間
+    // OWL-ViT 保留：提示詞和 Tool 3 的 AI 建議框還會用到
+    (async () => {
+        const OLD = ['/onnx-community/BiRefNet', '/onnx-community/ISNet-ONNX', '/Xenova/modnet', '/Xenova/slimsam', '/Xenova/sam-vit-base', '/briaai/RMBG-1.4'];
+        try {
+            if (!window.caches) return;
+            const cache = await caches.open('transformers-cache');
+            let count = 0, bytes = 0;
+            for (const req of await cache.keys()) {
+                if (!OLD.some(o => req.url.includes(o))) continue;
+                const res = await cache.match(req);
+                bytes += res ? parseInt(res.headers.get('content-length'), 10) || 0 : 0;
+                await cache.delete(req);
+                count++;
+            }
+            if (count) showAlert(`已刪除不再使用的模型快取 ${count} 個檔案（約 ${(bytes / 1048576).toFixed(0)} MB）。`);
+        } catch (err) {
+            console.warn('清除舊模型快取失敗', err);
+        }
+    })();
+
+    // ---------- 匯出 ----------
+    function trimCanvas(c) {
+        const w = c.width, h = c.height;
+        const d = c.getContext('2d').getImageData(0, 0, w, h).data;
+        let x1 = w, y1 = h, x2 = -1, y2 = -1;
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                if (d[(y * w + x) * 4 + 3] > 0) {
+                    if (x < x1) x1 = x; if (x > x2) x2 = x;
+                    if (y < y1) y1 = y; if (y > y2) y2 = y;
+                }
+            }
+        }
+        if (x2 < 0) return c;
+        const out = document.createElement('canvas');
+        out.width = x2 - x1 + 1; out.height = y2 - y1 + 1;
+        out.getContext('2d').drawImage(c, x1, y1, out.width, out.height, 0, 0, out.width, out.height);
+        return out;
+    }
+
+    function sanitizeName(name) { return name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'image'; }
+
+    exportZipBtn.addEventListener('click', async () => {
+        const list = items.filter(i => i.result || includeUnprocessed.checked);
+        if (!list.length) return;
+        exportZipBtn.disabled = true;
+        const original = exportZipBtn.innerText;
+        try {
+            const zip = new JSZip();
+            const used = new Set();
+            for (let i = 0; i < list.length; i++) {
+                const it = list[i];
+                exportZipBtn.innerText = `輸出中 ${i + 1} / ${list.length}`;
+                let c = it.result || toCanvas(it.bitmap, it.width, it.height);
+                if (it.result && trimTransparent.checked) c = trimCanvas(c);
+                const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+                let fileName = sanitizeName(it.name) + (it.result ? fileSuffix.value : '') + '.png';
+                while (used.has(fileName)) fileName = fileName.replace(/\.png$/, '_1.png');
+                used.add(fileName);
+                zip.file(fileName, blob);
+            }
+            exportZipBtn.innerText = '壓縮中…';
+            const content = await zip.generateAsync({ type: 'blob' });
+            saveAs(content, `nobg_${Date.now()}.zip`);
+            showAlert(`已匯出 ${list.length} 張。`);
+        } catch (err) {
+            console.error(err);
+            showAlert('匯出失敗：' + err.message);
+        } finally {
+            exportZipBtn.innerText = original;
+            onItemsChanged();
+        }
+    });
+
+    // ---------- 其他 ----------
+    $('tipsBtn').addEventListener('click', e => { e.stopPropagation(); $('tipsPopup').classList.toggle('show'); });
+    document.addEventListener('click', e => { if (!$('tipsPopup').contains(e.target)) $('tipsPopup').classList.remove('show'); });
+
+    new ResizeObserver(resizeCanvas).observe(viewport);
+    resizeCanvas();
+    onItemsChanged();
+    receiveFromTool3();
+</script>
+</body>
+</html>

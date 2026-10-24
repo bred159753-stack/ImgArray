@@ -276,7 +276,8 @@
             border: 1px solid var(--border-glass);
             font-weight: 600;
         }
-        #toolbar button:hover { background: var(--accent-white); color: var(--accent-black); }
+        #toolbar button:hover:not(:disabled) { background: var(--accent-white); color: var(--accent-black); }
+        #toolbar button:disabled { cursor: not-allowed; opacity: 0.4; }
         #layerInfo { color: var(--text-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
         #layerInfo b { color: var(--text-primary); }
 
@@ -526,6 +527,8 @@
             <input type="range" id="zoomSlider" min="10" max="200" value="100" step="2.5">
             <span id="zoomVal" style="width: 50px; font-weight:700;">100%</span>
             <button id="btnResetZoom">100% / 重置位置</button>
+            <button id="btnUndo" title="復原 (Ctrl+Z)" disabled>復原</button>
+            <button id="btnRedo" title="重做 (Ctrl+Y)" disabled>重做</button>
             <span id="layerInfo"></span>
 
             <div class="tips-wrapper">
@@ -538,6 +541,7 @@
                         <li><b>中鍵拖曳：</b>移動畫布視角 / 捲動右側列表。</li>
                         <li><b>統一畫布：</b>取消勾選後，寬高只作用於當前圖層。</li>
                         <li><b>匯出：</b>依每張圖各自的畫布尺寸打包成 ZIP。</li>
+                        <li><b>Ctrl + Z / Ctrl + Y：</b>復原、重做設定變更（最多 100 步）。</li>
                     </ul>
                 </div>
             </div>
@@ -817,6 +821,7 @@
         updatePaletteTransform();
         viewport.classList.add('has-loaded-content');
         updateGroupData();
+        resetHistory();
     }
 
     groupSelect.addEventListener('change', () => { selectedIndex = 0; updateGroupData(); });
@@ -1051,6 +1056,7 @@
         const b = document.createElement('b');
         b.innerText = item.name;
         layerInfo.append(`${selectedIndex + 1} / ${currentGroupItems.length}　`, b, `　${cWidth} × ${cHeight}`);
+        scheduleCommit();
     }
 
     // 打包成 ZIP 一鍵下載
@@ -1144,6 +1150,160 @@
         } finally {
             btnExport.disabled = false;
         }
+    });
+
+    // ---------- 復原 / 重做 ----------
+    // 每次設定變更後（停頓 400ms 合併成一步）把「目前狀態快照」推進復原堆疊。
+    // 快照只記設定值與每張圖的畫布尺寸，不含圖片本身，所以很輕量。
+    const HISTORY_LIMIT = 100;
+    const undoStack = [];
+    const redoStack = [];
+    let committedState = null;
+    let commitTimer = null;
+    const btnUndo = document.getElementById('btnUndo');
+    const btnRedo = document.getElementById('btnRedo');
+
+    function takeSnapshot() {
+        return {
+            group: groupSelect.value,
+            selectedIndex,
+            controls: {
+                useRelativePos: useRelativePos.checked,
+                syncCanvasSize: syncCanvasSize.checked,
+                autoDetectSize: autoDetectSize.checked,
+                showLabel: showLabelCheck.checked,
+                fontSize: fontSizeInput.value,
+                offsetY: offsetYInput.value,
+                exportFormat: exportFormat.value,
+                bgType: bgType.value,
+                bgColor: bgColorInput.value
+            },
+            sizes: currentGroupItems.map(item => [item.canvasW, item.canvasH])
+        };
+    }
+
+    // 比對用的 key：不含選取的圖層（單純切換選取不算一步）
+    function snapshotKey(snap) {
+        return JSON.stringify([snap.group, snap.controls, snap.sizes]);
+    }
+
+    function updateHistoryButtons() {
+        btnUndo.disabled = undoStack.length === 0;
+        btnRedo.disabled = redoStack.length === 0;
+    }
+
+    function resetHistory() {
+        clearTimeout(commitTimer);
+        commitTimer = null;
+        undoStack.length = 0;
+        redoStack.length = 0;
+        committedState = currentGroupItems.length ? takeSnapshot() : null;
+        updateHistoryButtons();
+    }
+
+    function scheduleCommit() {
+        if (!committedState) return;
+        clearTimeout(commitTimer);
+        commitTimer = setTimeout(commitNow, 400);
+    }
+
+    function commitNow() {
+        clearTimeout(commitTimer);
+        commitTimer = null;
+        if (!committedState) return;
+        const now = takeSnapshot();
+        if (snapshotKey(now) === snapshotKey(committedState)) {
+            committedState = now; // 只更新選取位置
+            return;
+        }
+        undoStack.push(committedState);
+        if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+        redoStack.length = 0;
+        committedState = now;
+        updateHistoryButtons();
+    }
+
+    // 依勾選狀態還原畫布設定區的提示文字與可用狀態
+    function refreshCanvasControlsUI() {
+        if (syncCanvasSize.checked) {
+            canvasHint.innerText = "勾選「統一」時，調整將會同步更新群組內所有圖層";
+            autoDetectSizeWrapper.style.display = 'none';
+        } else {
+            autoDetectSizeWrapper.style.display = 'flex';
+            canvasHint.innerText = autoDetectSize.checked
+                ? "已啟用自動偵測：每張圖的畫布尺寸將自動設為該圖片本身的尺寸"
+                : "未勾選「統一」時，調整僅作用於當前選取的單一圖層";
+        }
+        const lockSize = !syncCanvasSize.checked && autoDetectSize.checked;
+        canvasWInput.disabled = lockSize;
+        canvasHInput.disabled = lockSize;
+    }
+
+    function restoreSnapshot(snap) {
+        const groupChanged = groupSelect.value !== snap.group;
+        if (groupChanged) {
+            groupSelect.value = snap.group;
+            currentGroupItems = currentLoadedGroups[snap.group] || [];
+        }
+        const c = snap.controls;
+        useRelativePos.checked = c.useRelativePos;
+        syncCanvasSize.checked = c.syncCanvasSize;
+        autoDetectSize.checked = c.autoDetectSize;
+        showLabelCheck.checked = c.showLabel;
+        fontSizeInput.value = c.fontSize;
+        offsetYInput.value = c.offsetY;
+        exportFormat.value = c.exportFormat;
+        bgType.value = c.bgType;
+        bgColorInput.value = c.bgColor;
+        snap.sizes.forEach(([w, h], i) => {
+            const item = currentGroupItems[i];
+            if (item) { item.canvasW = w; item.canvasH = h; }
+        });
+        selectedIndex = Math.min(snap.selectedIndex, Math.max(0, currentGroupItems.length - 1));
+
+        refreshCanvasControlsUI();
+        updateBgOptionVisibility();
+        if (groupChanged) renderPalette(); else updatePaletteSelection();
+        syncUIWithCurrentItem();
+        renderStage();
+        committedState = takeSnapshot();
+        clearTimeout(commitTimer);
+        commitTimer = null;
+    }
+
+    function undo() {
+        commitNow();
+        if (!undoStack.length) return;
+        redoStack.push(committedState);
+        restoreSnapshot(undoStack.pop());
+        updateHistoryButtons();
+        alertDiv.innerText = `↩️ 已復原（還可復原 ${undoStack.length} 步）`;
+    }
+
+    function redo() {
+        commitNow();
+        if (!redoStack.length) return;
+        undoStack.push(committedState);
+        restoreSnapshot(redoStack.pop());
+        updateHistoryButtons();
+        alertDiv.innerText = `↪️ 已重做（還可重做 ${redoStack.length} 步）`;
+    }
+
+    btnUndo.addEventListener('click', undo);
+    btnRedo.addEventListener('click', redo);
+
+    window.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        const key = e.key.toLowerCase();
+        const isUndo = key === 'z' && !e.shiftKey;
+        const isRedo = key === 'y' || (key === 'z' && e.shiftKey);
+        if (!isUndo && !isRedo) return;
+        const el = document.activeElement;
+        if (el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type === 'text'))) return;
+        e.preventDefault();
+        // 正在編輯數字欄位時先離開欄位，讓剛輸入的值先記成一步
+        if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT')) el.blur();
+        if (isUndo) undo(); else redo();
     });
 
     updateBgOptionVisibility();
