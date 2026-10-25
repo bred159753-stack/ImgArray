@@ -419,7 +419,7 @@
         }
         .palette-img-box { width: 100%; height: calc(75px * var(--palette-scale)); min-height: 40px; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: var(--radius-sm); }
         .palette-item img { object-fit: contain; width: 100%; height: 100%; pointer-events: none; }
-        .palette-item span { font-size: calc(10px * Math.max(0.8, var(--palette-scale))); color: var(--text-secondary); margin-top: 6px; text-align: center; word-break: break-all; pointer-events: none; font-weight: 500; }
+        .palette-item span { font-size: calc(10px * max(0.8, var(--palette-scale))); color: var(--text-secondary); margin-top: 6px; text-align: center; word-break: break-all; pointer-events: none; font-weight: 500; }
 
         /* 未載入圖檔時為 100% 完全透明，無任何模糊遮罩 */
         #viewport { 
@@ -501,7 +501,7 @@
     <div id="sidebar">
         <div class="app-title">
             <span>圖層與圖檔排列匯出工具</span>
-            <span class="brand-badge">A Test</span>
+            <span class="brand-badge">TOOL 1</span>
         </div>
         
         <div class="control-group">
@@ -651,9 +651,9 @@
             <button id="btnRedo" title="重做 (Ctrl+Y)" style="width: auto; font-size: 11px;" disabled>重做</button>
             
             <div class="tips-wrapper">
-                <div class="tips-icon-btn" id="btnToggleTips" title="點擊查看操作筆記">i</div>
+                <div class="tips-icon-btn" id="btnToggleTips" title="操作說明">i</div>
                 <div class="note-popup" id="notePopup">
-                    <h4>操作快捷與說明筆記</h4>
+                    <h4>操作說明</h4>
                     <ul>
                         <li><b>點擊圖片：</b>選取該格（高亮顯示）。</li>
                         <li><b>不規則模式：</b>勾選後按 Shift 多選格子，按 Enter 可合併格子。</li>
