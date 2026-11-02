@@ -1,0 +1,1928 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComfyUI 訓練包審視工具 (Tool 6)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        :root {
+            /* Warm Earth & Dusk Atmospheric Palette (與 tool1 一致) */
+            --card-glass: rgba(255, 255, 255, 0.07);
+            --border-glass: rgba(255, 255, 255, 0.18);
+            --border-glass-light: rgba(255, 255, 255, 0.28);
+            --border-subtle: rgba(255, 255, 255, 0.08);
+
+            --text-primary: #f5f2ee;
+            --text-secondary: #cbbfb6;
+            --text-muted: #8e837a;
+
+            --accent-black: #0d0c0e;
+            --accent-white: #ffffff;
+            --accent-warm: #d3bead;
+            --accent-gold: #e2b067;
+            --accent-gold-soft: rgba(226, 176, 103, 0.2);
+            --danger-red: #e05d53;
+
+            --font-main: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", sans-serif;
+            --radius-pill: 9999px;
+            --radius-xl: 26px;
+            --radius-lg: 18px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: var(--font-main);
+            display: flex;
+            height: 100vh;
+            color: var(--text-primary);
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+            background-color: #1a1518;
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(200, 160, 140, 0.25) 0%, rgba(0, 0, 0, 0) 70%),
+                radial-gradient(ellipse 60% 40% at 85% 90%, rgba(160, 110, 95, 0.20) 0%, rgba(0, 0, 0, 0) 70%),
+                linear-gradient(135deg, rgba(18, 14, 18, 0.70) 0%, rgba(10, 8, 10, 0.85) 100%),
+                url('image/bg.jpg'),
+                linear-gradient(135deg, #2a2225 0%, #131013 100%);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        #app-body {
+            display: flex;
+            width: calc(100vw - 32px);
+            height: calc(100vh - 32px);
+            margin: 16px;
+            border-radius: var(--radius-xl);
+            overflow: hidden;
+            background: rgba(20, 16, 18, 0.25);
+            border: 1px solid var(--border-glass-light);
+            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.75), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+            position: relative;
+        }
+
+        /* 左側控制面板 */
+        #sidebar {
+            width: 350px;
+            background: rgba(20, 16, 18, 0.45);
+            backdrop-filter: blur(12px) saturate(130%);
+            -webkit-backdrop-filter: blur(12px) saturate(130%);
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            border-right: 1px solid var(--border-subtle);
+            flex-shrink: 0;
+            z-index: 10;
+            box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.08);
+        }
+
+        #sidebar::-webkit-scrollbar { width: 5px; height: 5px; }
+        #sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 999px; }
+
+        #sidebar .app-title {
+            font-size: 14px;
+            font-weight: 700;
+            padding: 4px 4px 12px;
+            border-bottom: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        #sidebar .app-title .brand-badge {
+            font-size: 10px;
+            font-weight: 800;
+            background: var(--accent-white);
+            color: var(--accent-black);
+            padding: 2px 8px;
+            border-radius: var(--radius-pill);
+            letter-spacing: 0.06em;
+        }
+
+        .control-group {
+            background: var(--card-glass);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            padding: 14px 16px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-glass);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 24px rgba(0, 0, 0, 0.15);
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+        .control-group:hover {
+            border-color: rgba(255, 255, 255, 0.35);
+            background: rgba(255, 255, 255, 0.09);
+        }
+
+        .control-group h3 {
+            font-size: 11px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .control-group h3 .num-tag {
+            font-size: 13px;
+            font-weight: 800;
+            color: var(--accent-warm);
+            letter-spacing: -0.02em;
+        }
+
+        label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            margin: 8px 0;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        select {
+            width: 85px;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--border-glass);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-family: inherit;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        select option { background: #1e181b; color: var(--text-primary); }
+        select:focus { outline: none; border-color: var(--accent-white); background: rgba(0, 0, 0, 0.55); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15); }
+
+        input[type="range"] { accent-color: var(--accent-white); cursor: pointer; }
+        input[type="checkbox"] { accent-color: var(--accent-white); cursor: pointer; width: 14px; height: 14px; flex-shrink: 0; }
+
+        .check-row { color: var(--text-primary); font-weight: 600; cursor: pointer; gap: 10px; }
+        .hint { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+
+        button {
+            background: var(--accent-white);
+            color: var(--accent-black);
+            border: 1px solid transparent;
+            padding: 10px 16px;
+            border-radius: var(--radius-pill);
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            width: 100%;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        button:hover:not(:disabled) {
+            background: var(--accent-warm);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+        button:active:not(:disabled) { transform: translateY(1px); }
+        button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+        button.ghost-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            border: 1px solid var(--border-glass);
+        }
+        button.ghost-btn:hover:not(:disabled) { background: var(--accent-white); color: var(--accent-black); }
+        button.ghost-btn.on { background: var(--accent-gold); color: var(--accent-black); border-color: var(--accent-gold); }
+
+        button.export-btn {
+            background: var(--accent-black);
+            color: var(--accent-white);
+            border: 1px solid var(--border-glass-light);
+            margin-top: 8px;
+        }
+        button.export-btn:hover:not(:disabled) { background: var(--accent-white); color: var(--accent-black); }
+
+        .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+        .btn-row button { padding: 8px 10px; font-size: 11px; }
+
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-top: 10px; font-size: 11px; color: var(--text-secondary); }
+        .stat-grid b { color: var(--text-primary); font-weight: 700; }
+        .stat-grid .warn b { color: var(--danger-red); }
+        .stat-grid .gold b { color: var(--accent-gold); }
+
+        #folderName { font-size: 12px; font-weight: 700; color: var(--accent-warm); margin-top: 10px; word-break: break-all; }
+        #cropInfo { font-size: 11px; color: var(--text-secondary); margin-top: 8px; line-height: 1.6; }
+        #cropInfo b { color: var(--text-primary); }
+
+        #alert { color: var(--accent-gold); font-size: 11px; line-height: 1.5; font-weight: 600; white-space: pre-line; }
+
+        /* 中央區 */
+        #main { flex: 1; display: flex; flex-direction: column; background: transparent; overflow: hidden; position: relative; min-width: 0; }
+
+        #toolbar {
+            background: rgba(20, 16, 18, 0.45);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 0 20px;
+            height: 54px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--border-subtle);
+            font-size: 12px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+            z-index: 10;
+            position: relative;
+        }
+        #toolbar button {
+            width: auto;
+            padding: 5px 14px;
+            font-size: 11px;
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            border: 1px solid var(--border-glass);
+            font-weight: 600;
+        }
+        #toolbar button:hover:not(:disabled) { background: var(--accent-white); color: var(--accent-black); }
+        #zoomVal { width: 46px; font-weight: 700; color: var(--text-primary); }
+        #imageInfo { color: var(--text-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+        #imageInfo b { color: var(--text-primary); }
+
+        .tips-wrapper { margin-left: auto; position: relative; flex-shrink: 0; }
+        .tips-icon-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-glass);
+            color: var(--accent-white);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 800;
+            transition: all 0.2s ease;
+        }
+        .tips-icon-btn:hover { background: var(--accent-white); color: var(--accent-black); }
+
+        .note-popup {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 42px;
+            background: rgba(25, 20, 22, 0.92);
+            backdrop-filter: blur(24px);
+            border: 1px solid var(--border-glass-light);
+            border-radius: var(--radius-lg);
+            padding: 16px 18px;
+            width: 360px;
+            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.7);
+            z-index: 100;
+            font-size: 12px;
+            line-height: 1.7;
+        }
+        .note-popup.show { display: block; }
+        .note-popup h4 { font-size: 11px; font-weight: 700; color: var(--accent-warm); text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px; margin-bottom: 10px; }
+        .note-popup ul { list-style: none; }
+        .note-popup li { margin-bottom: 6px; display: flex; align-items: flex-start; gap: 6px; color: var(--text-secondary); }
+        .note-popup li b { color: var(--text-primary); white-space: nowrap; }
+
+        /* 中央上半部：大圖檢視（3/4） */
+        #viewport {
+            flex: 3;
+            min-height: 0;
+            overflow: hidden;
+            position: relative;
+            background: transparent;
+            transition: background-color 0.4s ease;
+            cursor: grab;
+        }
+        #viewport.has-loaded-content {
+            background-color: rgba(20, 16, 18, 0.78);
+            background-image:
+                radial-gradient(circle at 50% 50%, rgba(200, 160, 140, 0.08) 0, rgba(0,0,0,0) 65%),
+                radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 0);
+            background-size: auto, 24px 24px;
+        }
+        #viewport.crop-mode { cursor: crosshair; }
+        #viewport.panning { cursor: grabbing !important; }
+
+        .empty-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 13px; letter-spacing: 0.04em; pointer-events: none; }
+        #viewport.has-loaded-content .empty-hint { display: none; }
+
+        #stage {
+            position: absolute;
+            left: 0;
+            top: 0;
+            transform-origin: 0 0;
+            will-change: transform;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            background-color: #2a2427;
+            background-image:
+                linear-gradient(45deg, rgba(255,255,255,0.06) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.06) 75%),
+                linear-gradient(45deg, rgba(255,255,255,0.06) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.06) 75%);
+            background-size: 32px 32px;
+            background-position: 0 0, 16px 16px;
+            overflow: hidden;
+            --s: 1;
+        }
+        #viewport:not(.has-loaded-content) #stage { display: none; }
+        #previewCanvas { display: block; pointer-events: none; }
+        #singleView { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+        #singleView.hidden, #gridView.hidden { display: none; }
+
+        /* 多選：最多 2×3 格，每格上圖下文字 */
+        #gridView {
+            flex: 1;
+            min-height: 0;
+            display: grid;
+            gap: 10px;
+            padding: 10px;
+            background: rgba(20, 16, 18, 0.6);
+        }
+        .cell {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            min-width: 0;
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.2);
+        }
+        .cell-img {
+            flex: 3;
+            min-height: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px;
+            cursor: zoom-in;
+            background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 0);
+            background-size: 20px 20px;
+        }
+        .cell-img canvas { max-width: 100%; max-height: 100%; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+        .cell-text { flex: 1; min-height: 70px; display: flex; flex-direction: column; border-top: 1px solid var(--border-glass); background: rgba(20, 16, 18, 0.55); }
+        .cell-head { display: flex; align-items: center; gap: 6px; padding: 5px 10px; font-size: 10px; color: var(--text-muted); border-bottom: 1px solid var(--border-subtle); }
+        .cell-head .cname { color: var(--text-primary); font-weight: 700; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+        .cell textarea {
+            flex: 1;
+            width: 100%;
+            resize: none;
+            border: none;
+            outline: none;
+            background: rgba(0, 0, 0, 0.25);
+            color: var(--text-primary);
+            font-family: "Inter", "Consolas", "PingFang TC", "Noto Sans TC", monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            padding: 6px 10px;
+        }
+        .cell textarea:focus { background: rgba(0, 0, 0, 0.4); }
+
+        .pager { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .pager.hidden { display: none; }
+        #pageInfo { font-weight: 700; color: var(--text-primary); min-width: 40px; text-align: center; }
+
+        #cropBox {
+            position: absolute;
+            display: none;
+            box-shadow: 0 0 0 99999px rgba(0, 0, 0, 0.58);
+            outline: calc(1.5px / var(--s)) solid var(--accent-gold);
+            cursor: move;
+        }
+        #viewport.crop-mode #cropBox { display: block; }
+        #cropBox::before, #cropBox::after {
+            content: "";
+            position: absolute;
+            pointer-events: none;
+            border: 0 dashed rgba(255, 255, 255, 0.45);
+        }
+        #cropBox::before { left: 33.333%; right: 33.333%; top: 0; bottom: 0; border-left-width: calc(1px / var(--s)); border-right-width: calc(1px / var(--s)); }
+        #cropBox::after { top: 33.333%; bottom: 33.333%; left: 0; right: 0; border-top-width: calc(1px / var(--s)); border-bottom-width: calc(1px / var(--s)); }
+        .crop-handle {
+            position: absolute;
+            width: calc(12px / var(--s));
+            height: calc(12px / var(--s));
+            background: var(--accent-white);
+            border: calc(1.5px / var(--s)) solid var(--accent-gold);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2;
+        }
+        .crop-handle[data-h="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+        .crop-handle[data-h="n"]  { left: 50%; top: 0; cursor: ns-resize; }
+        .crop-handle[data-h="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
+        .crop-handle[data-h="e"]  { left: 100%; top: 50%; cursor: ew-resize; }
+        .crop-handle[data-h="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+        .crop-handle[data-h="s"]  { left: 50%; top: 100%; cursor: ns-resize; }
+        .crop-handle[data-h="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+        .crop-handle[data-h="w"]  { left: 0; top: 50%; cursor: ew-resize; }
+
+        #cropBadge {
+            position: absolute;
+            left: 14px;
+            top: 12px;
+            padding: 4px 12px;
+            font-size: 11px;
+            font-weight: 700;
+            border-radius: var(--radius-pill);
+            background: rgba(13, 12, 14, 0.75);
+            border: 1px solid var(--border-glass);
+            color: var(--accent-gold);
+            pointer-events: none;
+            display: none;
+            z-index: 5;
+        }
+        #cropBadge.show { display: block; }
+
+        /* 中央下半部：同名 .txt（1/4） */
+        #text-panel {
+            flex: 1;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+            background: rgba(20, 16, 18, 0.55);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-top: 1px solid var(--border-glass);
+        }
+        .text-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            font-size: 11px;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border-subtle);
+            flex-shrink: 0;
+        }
+        #txtName { color: var(--text-primary); font-weight: 700; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .status-pill { padding: 2px 9px; border-radius: var(--radius-pill); font-size: 10px; font-weight: 700; border: 1px solid var(--border-glass); color: var(--text-secondary); white-space: nowrap; }
+        .status-pill.dirty { background: var(--accent-gold); color: var(--accent-black); border-color: var(--accent-gold); }
+        .status-pill.missing { color: var(--danger-red); border-color: rgba(224, 93, 83, 0.5); }
+        #txtStats { margin-left: auto; white-space: nowrap; }
+        .text-header button { width: auto; padding: 4px 12px; font-size: 10px; background: rgba(255, 255, 255, 0.1); color: var(--text-primary); border: 1px solid var(--border-glass); font-weight: 600; box-shadow: none; }
+        .text-header button:hover:not(:disabled) { background: var(--accent-white); color: var(--accent-black); }
+        #txtEditor {
+            flex: 1;
+            width: 100%;
+            resize: none;
+            border: none;
+            outline: none;
+            background: rgba(0, 0, 0, 0.25);
+            color: var(--text-primary);
+            font-family: "Inter", "Consolas", "PingFang TC", "Noto Sans TC", monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            padding: 12px 16px;
+        }
+        #txtEditor:focus { background: rgba(0, 0, 0, 0.4); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15); }
+        #txtEditor:disabled { opacity: 0.5; }
+        #txtEditor::-webkit-scrollbar { width: 5px; }
+        #txtEditor::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 999px; }
+
+        /* 右側檔案列表 */
+        #right-panel {
+            width: 270px;
+            background: rgba(20, 16, 18, 0.45);
+            backdrop-filter: blur(12px) saturate(130%);
+            -webkit-backdrop-filter: blur(12px) saturate(130%);
+            border-left: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            z-index: 10;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.08);
+        }
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 0 16px;
+            height: 54px;
+            flex-shrink: 0;
+        }
+        .panel-header h2 { font-size: 12px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.06em; margin: 0; }
+        .panel-header select { width: 96px; padding: 4px 8px; font-size: 11px; }
+        .panel-actions { display: flex; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; }
+        .panel-actions button { padding: 7px 10px; font-size: 11px; }
+        .panel-actions .sel-info { font-size: 10px; color: var(--text-muted); }
+
+        #fileList {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            align-content: start;
+        }
+        #fileList::-webkit-scrollbar { width: 5px; }
+        #fileList::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 999px; }
+
+        .file-item {
+            background: var(--card-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-md);
+            padding: 8px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+            position: relative;
+            user-select: none;
+        }
+        .file-item.hidden { display: none; }
+        .file-item { content-visibility: auto; contain-intrinsic-size: auto 100px auto 140px; min-width: 0; }
+        .file-item:hover { border-color: var(--accent-white); transform: translateY(-2px); background: rgba(255, 255, 255, 0.16); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4); }
+        .file-item.active { border: 2px solid var(--accent-gold); background: rgba(226, 176, 103, 0.12); box-shadow: 0 0 0 4px var(--accent-gold-soft), 0 10px 25px rgba(226, 176, 103, 0.25); }
+        .thumb-box { width: 100%; height: 90px; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: var(--radius-sm); background: rgba(0, 0, 0, 0.2); }
+        .thumb-box canvas { max-width: 100%; max-height: 100%; pointer-events: none; }
+        .thumbs { display: flex; gap: 6px; width: 100%; }
+        .thumbs .thumb-box { flex: 1; min-width: 0; }
+        .thumb-box.repl { display: none; }
+        .pair-label { display: none; }
+
+        /* 有替換圖片時：每列左邊原圖、右邊替換圖 */
+        #fileList.pair-mode { grid-template-columns: 1fr; }
+        #fileList.pair-mode .thumb-box.repl { display: flex; }
+        #fileList.pair-mode .thumb-box.repl.empty { background: transparent; border: 1px dashed var(--border-subtle); }
+        #fileList.pair-mode .pair-label { display: flex; grid-column: 1 / -1; gap: 6px; font-size: 10px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.08em; padding: 0 9px; }
+        #fileList.pair-mode .pair-label span { flex: 1; text-align: center; }
+        .file-item .name { font-size: 10px; color: var(--text-secondary); margin-top: 6px; text-align: center; word-break: break-all; pointer-events: none; font-weight: 500; line-height: 1.3; }
+        .file-item.active .name { color: var(--text-primary); font-weight: 600; }
+        .file-item .badges { position: absolute; top: 4px; right: 4px; display: flex; gap: 3px; pointer-events: none; }
+        .badge { font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: var(--radius-pill); }
+        .badge.mod { background: var(--accent-gold); color: var(--accent-black); }
+        .badge.notxt { background: var(--danger-red); color: #fff; }
+        .list-empty { grid-column: 1 / -1; color: var(--text-muted); font-size: 11px; text-align: center; padding: 30px 0; }
+    </style>
+</head>
+<body>
+
+<div id="app-body">
+    <!-- 左側面板 -->
+    <div id="sidebar">
+        <div class="app-title">
+            <span>訓練包審視工具</span>
+            <span class="brand-badge">Tool 6</span>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">01</span> 選擇訓練包資料夾</h3>
+            <button id="btnPickFolder">選擇資料夾</button>
+            <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
+            <label class="check-row" style="margin-top:10px;">
+                包含子資料夾
+                <input type="checkbox" id="includeSub" checked>
+            </label>
+            <div id="folderName"></div>
+            <div class="stat-grid" id="statGrid" style="display:none;">
+                <span>圖片：<b id="statImg">0</b></span>
+                <span>文字檔：<b id="statTxt">0</b></span>
+                <span class="warn">缺少 .txt：<b id="statMissing">0</b></span>
+                <span>無對應圖片的 .txt：<b id="statOrphan">0</b></span>
+            </div>
+            <div class="hint" id="modeHint">支援 PNG / JPG / WEBP / BMP，圖片與同名 .txt 會自動配對。</div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">02</span> 裁切目前圖片（單選時）</h3>
+            <button id="btnCropMode" class="ghost-btn" disabled>進入裁切模式 (C)</button>
+            <div class="btn-row">
+                <button id="btnCropApply" disabled>套用 (Enter)</button>
+                <button id="btnCropCancel" class="ghost-btn" disabled>取消 (Esc)</button>
+            </div>
+            <label class="check-row" style="margin-top:12px;">
+                鎖定原圖比例（避免放大後變形）
+                <input type="checkbox" id="lockRatio" checked>
+            </label>
+            <button id="btnCropReset" class="ghost-btn" style="margin-top:4px;" disabled>還原此圖（取消裁切）</button>
+            <div id="cropInfo">尚未裁切</div>
+            <div class="hint">裁切後輸出時會自動放大回原圖尺寸。未勾選鎖定比例時，放大會拉伸變形。</div>
+        </div>
+
+        <div class="control-group">
+            <h3><span class="num-tag">03</span> 輸出有改動的檔案</h3>
+            <div class="stat-grid" style="margin-top:0;">
+                <span class="gold">改動圖片：<b id="statDirtyImg">0</b></span>
+                <span class="gold">改動文字：<b id="statDirtyTxt">0</b></span>
+            </div>
+            <label class="check-row" id="backupRow" style="margin-top:12px;">
+                覆寫前備份原檔（_tool6_backup）
+                <input type="checkbox" id="backupOriginal" checked>
+            </label>
+            <button id="btnExport" class="export-btn" disabled>輸出改動 (Ctrl+S)</button>
+            <div class="hint" id="exportHint">只會寫入有改動的圖片或文字，並自動沿用原檔格式（PNG 存 PNG、JPG 存 JPG…），未更動的檔案不會重新儲存。</div>
+        </div>
+        <div id="alert"></div>
+    </div>
+
+    <!-- 中央區 -->
+    <div id="main">
+        <div id="toolbar">
+            <button id="btnFit">適應視窗 (F)</button>
+            <button id="btn100">100%</button>
+            <span id="zoomVal">100%</span>
+            <span id="imageInfo"></span>
+            <div class="pager hidden" id="pager">
+                <button id="btnPrevPage">上一頁</button>
+                <span id="pageInfo">1 / 1</span>
+                <button id="btnNextPage">下一頁</button>
+            </div>
+
+            <div class="tips-wrapper">
+                <div class="tips-icon-btn" id="btnToggleTips" title="操作說明">i</div>
+                <div class="note-popup" id="notePopup">
+                    <h4>操作說明</h4>
+                    <ul>
+                        <li><b>選擇資料夾：</b>Chrome / Edge 會詢問讀寫權限，允許後可直接覆寫原檔。</li>
+                        <li><b>點擊右側縮圖：</b>切換要審視的圖片與 .txt。</li>
+                        <li><b>Ctrl / Shift + 點擊：</b>多選，中間最多 2×3 格同時檢視與編輯文字，超過 6 張用上一頁 / 下一頁切換。</li>
+                        <li><b>雙擊格子圖片：</b>只看這一張（可縮放、裁切）。</li>
+                        <li><b>替換圖片：</b>先選圖再按右上「替換圖片」，選取的新圖依檔名順序對應；輸出時以原檔名、原格式存回。</li>
+                        <li><b>↑ ↓ / PageUp PageDown：</b>上一張 / 下一張（文字框外）。</li>
+                        <li><b>滑鼠滾輪：</b>縮放大圖；<b>左鍵或中鍵拖曳：</b>移動視角。</li>
+                        <li><b>C：</b>裁切模式，拖曳框線或角點調整，空白鍵 + 拖曳可移動視角。</li>
+                        <li><b>Enter / Esc：</b>套用 / 取消裁切。</li>
+                        <li><b>下方文字框：</b>直接編輯 .txt，缺檔時輸入文字會新建同名 .txt。</li>
+                        <li><b>Ctrl + S：</b>只輸出有改動的圖片與文字。</li>
+                        <li><b>畫面顯示：</b>為了省記憶體只顯示輕量預覽圖，輸出時才讀取原圖高清繪製。</li>
+                        <li><b>注意：</b>重新編碼的 PNG 不會保留原本的中繼資料。</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div id="singleView">
+        <div id="viewport">
+            <div class="empty-hint">請先在左側選擇訓練包資料夾</div>
+            <div id="cropBadge"></div>
+            <div id="stage">
+                <canvas id="previewCanvas"></canvas>
+                <div id="cropBox">
+                    <div class="crop-handle" data-h="nw"></div>
+                    <div class="crop-handle" data-h="n"></div>
+                    <div class="crop-handle" data-h="ne"></div>
+                    <div class="crop-handle" data-h="e"></div>
+                    <div class="crop-handle" data-h="se"></div>
+                    <div class="crop-handle" data-h="s"></div>
+                    <div class="crop-handle" data-h="sw"></div>
+                    <div class="crop-handle" data-h="w"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="text-panel">
+            <div class="text-header">
+                <span id="txtName">—</span>
+                <span class="status-pill" id="txtStatus">未載入</span>
+                <span id="txtStats"></span>
+                <button id="btnTxtRevert" disabled>還原文字</button>
+            </div>
+            <textarea id="txtEditor" spellcheck="false" placeholder="選擇圖片後在此編輯同名 .txt 內容" disabled></textarea>
+        </div>
+        </div>
+        <div id="gridView" class="hidden"></div>
+    </div>
+
+    <!-- 右側檔案列表 -->
+    <div id="right-panel">
+        <div class="panel-header">
+            <h2>檔案 <span id="listCount" style="color:var(--text-muted);font-weight:600;"></span></h2>
+            <select id="listFilter">
+                <option value="all">全部</option>
+                <option value="dirty">已改動</option>
+                <option value="notxt">缺少 .txt</option>
+            </select>
+        </div>
+        <div class="panel-actions">
+            <button id="btnReplace" disabled>替換圖片</button>
+            <button id="btnUnreplace" class="ghost-btn" disabled>取消替換</button>
+            <input type="file" id="replaceInput" accept="image/png,image/jpeg,image/webp,image/bmp" multiple hidden>
+        </div>
+        <div id="fileList"><div class="list-empty">尚未載入資料夾</div></div>
+    </div>
+</div>
+
+<script>
+    const IMG_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'bmp'];
+    const BACKUP_DIR = '_tool6_backup';
+    // 同 tool1：畫面上只用 <=500px 的輕量預覽圖，輸出時才讀原圖高清繪製
+    const PREVIEW_MAX = 500;
+    // 中間檢視區用的高清預覽（背景解碼並快取最近使用的幾張，切換時不卡頓）
+    const HI_MAX = 2048;
+    const HI_CACHE = 24;
+    const THUMB_MAX = 200;
+    const ENCODE_QUALITY = 0.95;
+    const MIN_CROP = 8;
+    const PAGE_SIZE = 6;
+
+    const $ = (id) => document.getElementById(id);
+    const btnPickFolder = $('btnPickFolder');
+    const folderInput = $('folderInput');
+    const includeSub = $('includeSub');
+    const folderNameEl = $('folderName');
+    const modeHint = $('modeHint');
+    const btnCropMode = $('btnCropMode');
+    const btnCropApply = $('btnCropApply');
+    const btnCropCancel = $('btnCropCancel');
+    const btnCropReset = $('btnCropReset');
+    const lockRatio = $('lockRatio');
+    const cropInfo = $('cropInfo');
+    const backupOriginal = $('backupOriginal');
+    const backupRow = $('backupRow');
+    const btnExport = $('btnExport');
+    const alertDiv = $('alert');
+    const singleView = $('singleView');
+    const gridView = $('gridView');
+    const viewport = $('viewport');
+    const stage = $('stage');
+    const previewCanvas = $('previewCanvas');
+    const cropBox = $('cropBox');
+    const cropBadge = $('cropBadge');
+    const zoomVal = $('zoomVal');
+    const imageInfo = $('imageInfo');
+    const pager = $('pager');
+    const pageInfo = $('pageInfo');
+    const txtName = $('txtName');
+    const txtStatus = $('txtStatus');
+    const txtStats = $('txtStats');
+    const txtEditor = $('txtEditor');
+    const btnTxtRevert = $('btnTxtRevert');
+    const fileList = $('fileList');
+    const listFilter = $('listFilter');
+    const listCount = $('listCount');
+    const btnReplace = $('btnReplace');
+    const btnUnreplace = $('btnUnreplace');
+    const replaceInput = $('replaceInput');
+
+    // 圖片來源：{ file, w, h, pw, ph, img }（w/h 為原尺寸，pw/ph 為預覽尺寸，img 為預覽圖）
+    // 每張圖的資料：{ rel, dir, base, ext, imgName, imgHandle, txtHandle, dirHandle, imgFile, txtRel,
+    //   txtOriginal (null=沒有 .txt), txtCurrent, eol, shared, orig, repl, crop, el }
+    let items = [];
+    let rootHandle = null;      // File System Access 的根資料夾（可寫）；null 代表唯讀模式，輸出改為 ZIP
+    let rootName = '';
+    let selected = [];          // 依列表順序排列
+    let anchor = null;          // Shift 多選的起點
+    let page = 0;
+    let current = null;         // 單選時的那一張
+    let loadToken = 0;
+    let thumbGen = 0;
+
+    let view = { s: 1, tx: 0, ty: 0 };
+    let cropMode = false;
+    let draftCrop = null;       // 裁切模式中正在調整的框（來源圖原尺寸座標）
+    let spaceDown = false;
+
+    // ---------- 工具函式 ----------
+    const extOf = (name) => { const i = name.lastIndexOf('.'); return i < 0 ? '' : name.slice(i + 1).toLowerCase(); };
+    const baseOf = (name) => { const i = name.lastIndexOf('.'); return i < 0 ? name : name.slice(0, i); };
+    const naturalCmp = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }).compare;
+    const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+    const txtOwner = (it) => it.shared || it;
+    const src = (it) => it.repl || it.orig;
+    const isImgDirty = (it) => !!it.crop || !!it.repl;
+    const isTxtDirty = (it) => it.txtOriginal === null ? it.txtCurrent !== '' : it.txtCurrent !== it.txtOriginal;
+
+    function setAlert(msg) { alertDiv.innerText = msg || ''; }
+
+    function mimeOf(ext) {
+        if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+        if (ext === 'webp') return 'image/webp';
+        if (ext === 'bmp') return 'image/bmp';
+        return 'image/png';
+    }
+
+    function readTextNormalized(text) {
+        const eol = text.includes('\r\n') ? '\r\n' : '\n';
+        return { text: text.replace(/\r\n/g, '\n'), eol };
+    }
+
+    // 解碼一次原圖，只留下輕量預覽圖
+    async function makeSource(file) {
+        const bmp = await createImageBitmap(file);
+        const w = bmp.width, h = bmp.height;
+        const k = Math.min(1, PREVIEW_MAX / Math.max(w, h));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(w * k));
+        c.height = Math.max(1, Math.round(h * k));
+        const ctx = c.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(bmp, 0, 0, c.width, c.height);
+        bmp.close && bmp.close();
+        return { file, w, h, pw: c.width, ph: c.height, img: c };
+    }
+
+    function ensureOrig(it) {
+        if (it.orig) return Promise.resolve(it.orig);
+        if (!it.origP) {
+            it.origP = makeSource(it.imgFile).then(s => { it.orig = s; it.origP = null; return s; })
+                .catch(err => { it.origP = null; throw err; });
+        }
+        return it.origP;
+    }
+
+    // 把來源（含裁切）畫到 canvas 上，比例為來源原比例；im 預設為輕量預覽圖，max 為 canvas 最長邊上限
+    function drawSource(canvas, s, crop, max, im) {
+        if (!s) { canvas.width = 1; canvas.height = 1; return; }
+        im = im || s.img;
+        let cw = im.width, ch = im.height;
+        if (max && Math.max(cw, ch) > max) {
+            const r = max / Math.max(cw, ch);
+            cw = Math.max(1, Math.round(cw * r)); ch = Math.max(1, Math.round(ch * r));
+        }
+        if (canvas.width !== cw) canvas.width = cw;
+        if (canvas.height !== ch) canvas.height = ch;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
+        ctx.clearRect(0, 0, cw, ch);
+        if (crop) {
+            const k = im.width / s.w;
+            ctx.drawImage(im, crop.x * k, crop.y * k, crop.w * k, crop.h * k, 0, 0, cw, ch);
+        } else {
+            ctx.drawImage(im, 0, 0, cw, ch);
+        }
+    }
+
+    // 高清預覽快取（LRU）
+    const hiCache = new Map();
+
+    function hiEntry(s) {
+        if (Math.max(s.w, s.h) <= PREVIEW_MAX) return { bmp: s.img, p: Promise.resolve(s.img) };
+        let e = hiCache.get(s);
+        if (e) { hiCache.delete(s); hiCache.set(s, e); return e; }
+        const k = Math.min(1, HI_MAX / Math.max(s.w, s.h));
+        e = { bmp: null, closed: false };
+        e.p = createImageBitmap(s.file, {
+            resizeWidth: Math.max(1, Math.round(s.w * k)),
+            resizeHeight: Math.max(1, Math.round(s.h * k)),
+            resizeQuality: 'high'
+        }).then(b => {
+            if (e.closed) { b.close && b.close(); return null; }
+            e.bmp = b;
+            return b;
+        }).catch(() => null);
+        hiCache.set(s, e);
+        while (hiCache.size > HI_CACHE) {
+            const [oldKey, old] = hiCache.entries().next().value;
+            hiCache.delete(oldKey);
+            old.closed = true;
+            if (old.bmp && old.bmp.close) old.bmp.close();
+        }
+        return e;
+    }
+
+    function clearHiCache() {
+        for (const e of hiCache.values()) { e.closed = true; if (e.bmp && e.bmp.close) e.bmp.close(); }
+        hiCache.clear();
+    }
+
+    // 中間區域用：先畫輕量預覽，高清版好了再補畫
+    function drawView(canvas, s, crop) {
+        const id = canvas._drawId = (canvas._drawId || 0) + 1;
+        if (!s) { drawSource(canvas, null); return; }
+        const e = hiEntry(s);
+        if (e.bmp) { drawSource(canvas, s, crop, 0, e.bmp); return; }
+        drawSource(canvas, s, crop);
+        e.p.then(b => { if (b && !e.closed && canvas._drawId === id) drawSource(canvas, s, crop, 0, b); });
+    }
+
+    function prefetchHi(list) {
+        for (const it of list) { const s = it && src(it); if (s) hiEntry(s); }
+    }
+
+    // ---------- 載入資料夾 ----------
+    btnPickFolder.addEventListener('click', async () => {
+        if (!confirmDiscard()) return;
+        if (window.showDirectoryPicker) {
+            try {
+                const handle = await window.showDirectoryPicker({ id: 'imgarray-tool6', mode: 'readwrite' });
+                await loadFromHandle(handle);
+                return;
+            } catch (err) {
+                if (err && err.name === 'AbortError') return;
+                console.warn('showDirectoryPicker 失敗，改用一般資料夾選擇：', err);
+            }
+        }
+        folderInput.click();
+    });
+
+    folderInput.addEventListener('change', async () => {
+        const files = Array.from(folderInput.files || []);
+        folderInput.value = '';
+        if (files.length) await loadFromFileList(files);
+    });
+
+    async function loadFromHandle(handle) {
+        setAlert('⏳ 讀取資料夾中...');
+        const entries = [];
+        async function walk(dirHandle, prefix) {
+            for await (const [name, h] of dirHandle.entries()) {
+                if (h.kind === 'directory') {
+                    if (!includeSub.checked || name === BACKUP_DIR || name.startsWith('.')) continue;
+                    await walk(h, prefix + name + '/');
+                } else {
+                    entries.push({ dir: prefix, name, handle: h, dirHandle });
+                }
+            }
+        }
+        await walk(handle, '');
+        rootHandle = handle;
+        rootName = handle.name;
+        await buildItems(entries, async (e) => e.handle.getFile());
+    }
+
+    async function loadFromFileList(files) {
+        setAlert('⏳ 讀取資料夾中...');
+        const entries = [];
+        for (const f of files) {
+            const parts = (f.webkitRelativePath || f.name).split('/');
+            if (parts.length > 1) rootName = parts[0];
+            const inner = parts.slice(1);
+            if (inner.length > 1 && (!includeSub.checked || inner.slice(0, -1).some(p => p === BACKUP_DIR || p.startsWith('.')))) continue;
+            const name = inner.length ? inner[inner.length - 1] : f.name;
+            const dir = inner.length > 1 ? inner.slice(0, -1).join('/') + '/' : '';
+            entries.push({ dir, name, file: f });
+        }
+        rootHandle = null;
+        await buildItems(entries, async (e) => e.file);
+    }
+
+    async function buildItems(entries, getFile) {
+        const groups = new Map(); // key: dir + 小寫 base
+        for (const e of entries) {
+            const ext = extOf(e.name);
+            const isImg = IMG_EXTS.includes(ext);
+            const isTxt = ext === 'txt';
+            if (!isImg && !isTxt) continue;
+            const key = e.dir + baseOf(e.name).toLowerCase();
+            if (!groups.has(key)) groups.set(key, { imgs: [], txt: null });
+            const g = groups.get(key);
+            if (isImg) g.imgs.push(e); else g.txt = e;
+        }
+
+        const newItems = [];
+        let orphan = 0;
+        for (const g of groups.values()) {
+            if (!g.imgs.length) { orphan++; continue; }
+            let txtOriginal = null, eol = '\n';
+            if (g.txt) {
+                const r = readTextNormalized(await (await getFile(g.txt)).text());
+                txtOriginal = r.text; eol = r.eol;
+            }
+            // 同名多張圖（例如 a.png 與 a.jpg）共用同一個 .txt
+            for (const e of g.imgs) {
+                newItems.push({
+                    rel: e.dir + e.name,
+                    dir: e.dir,
+                    base: baseOf(e.name),
+                    ext: extOf(e.name),
+                    imgName: e.name,
+                    imgHandle: e.handle || null,
+                    dirHandle: e.dirHandle || null,
+                    txtHandle: g.txt ? (g.txt.handle || null) : null,
+                    txtRel: g.txt ? g.txt.dir + g.txt.name : e.dir + baseOf(e.name) + '.txt',
+                    imgFile: await getFile(e),
+                    txtOriginal,
+                    txtCurrent: txtOriginal === null ? '' : txtOriginal,
+                    eol,
+                    orig: null, repl: null, crop: null,
+                    el: null
+                });
+            }
+        }
+        const byTxt = new Map();
+        for (const it of newItems) {
+            const k = it.txtRel.toLowerCase();
+            if (byTxt.has(k)) it.shared = byTxt.get(k); else byTxt.set(k, it);
+        }
+        newItems.sort((a, b) => naturalCmp(a.rel, b.rel));
+
+        exitCropMode(false);
+        clearHiCache();
+        items = newItems;
+        selected = [];
+        current = null;
+        anchor = null;
+
+        folderNameEl.textContent = '📁 ' + (rootName || '(未命名資料夾)');
+        $('statGrid').style.display = '';
+        $('statImg').textContent = items.length;
+        $('statTxt').textContent = items.filter(it => it.txtOriginal !== null).length;
+        $('statMissing').textContent = items.filter(it => it.txtOriginal === null).length;
+        $('statOrphan').textContent = orphan;
+        if (rootHandle) {
+            modeHint.innerHTML = '✅ 已取得讀寫權限：輸出時會<b style="color:var(--text-primary)">直接覆寫原檔</b>（同檔名、同格式）。';
+            backupRow.style.display = '';
+        } else {
+            modeHint.innerHTML = '⚠️ 唯讀模式（瀏覽器不支援直接寫入）：輸出會打包成 ZIP，解壓縮後覆蓋回原資料夾即可。';
+            backupRow.style.display = 'none';
+        }
+
+        renderList();
+        updateDirtyStats();
+        setAlert(items.length ? `✅ 已載入 ${items.length} 張圖片` : '❌ 資料夾裡沒有可用的圖片');
+        if (items.length) setSelection([items[0]], items[0]);
+        else renderCenter();
+        generateThumbs();
+    }
+
+    // ---------- 右側列表 ----------
+    function visibleItems() {
+        const f = listFilter.value;
+        if (f === 'dirty') return items.filter(it => isImgDirty(it) || isTxtDirty(txtOwner(it)));
+        if (f === 'notxt') return items.filter(it => txtOwner(it).txtOriginal === null);
+        return items;
+    }
+
+    // 只在載入資料夾時建立一次所有項目；之後篩選只切換顯示，不重建 DOM（避免切換篩選時卡頓）
+    let listEmptyEl = null;
+    function renderList() {
+        fileList.innerHTML = '';
+        const frag = document.createDocumentFragment();
+        const label = document.createElement('div');
+        label.className = 'pair-label';
+        label.innerHTML = '<span>原圖</span><span>替換圖片</span>';
+        frag.appendChild(label);
+        for (const it of items) {
+            ensureEl(it);
+            frag.appendChild(it.el);
+        }
+        listEmptyEl = document.createElement('div');
+        listEmptyEl.className = 'list-empty';
+        frag.appendChild(listEmptyEl);
+        fileList.appendChild(frag);
+        applyFilter();
+    }
+
+    function applyFilter() {
+        const vis = new Set(visibleItems());
+        fileList.classList.toggle('pair-mode', items.some(it => it.repl));
+        for (const it of items) {
+            if (!it.el) continue;
+            it.el.classList.toggle('hidden', !vis.has(it));
+            it.el.classList.toggle('active', selected.includes(it));
+            updateBadges(it);
+        }
+        listCount.textContent = items.length ? `(${vis.size}/${items.length})` : '';
+        if (listEmptyEl) {
+            listEmptyEl.style.display = vis.size ? 'none' : '';
+            listEmptyEl.textContent = items.length ? '沒有符合條件的檔案' : '尚未載入資料夾';
+        }
+        updatePanelButtons();
+    }
+
+    function ensureEl(it) {
+        if (it.el) return;
+        const el = document.createElement('div');
+        el.className = 'file-item';
+        const thumbs = document.createElement('div');
+        thumbs.className = 'thumbs';
+        const mk = (cls) => {
+            const box = document.createElement('div');
+            box.className = 'thumb-box ' + cls;
+            const c = document.createElement('canvas');
+            c.width = 1; c.height = 1;
+            box.appendChild(c);
+            thumbs.appendChild(box);
+            return c;
+        };
+        it.thumbOrig = mk('orig');
+        it.thumbRepl = mk('repl');
+        const badges = document.createElement('div');
+        badges.className = 'badges';
+        const name = document.createElement('div');
+        name.className = 'name';
+        name.textContent = it.rel;
+        name.title = it.rel;
+        el.append(thumbs, badges, name);
+        el.addEventListener('click', (e) => onItemClick(it, e));
+        it.el = el; it.badgesEl = badges;
+        drawItemThumbs(it);
+    }
+
+    function drawItemThumbs(it) {
+        if (!it.el) return;
+        // 裁切屬於「目前來源」：有替換時畫在右邊，沒替換時畫在原圖上
+        drawSource(it.thumbOrig, it.orig, it.repl ? null : it.crop, THUMB_MAX);
+        drawSource(it.thumbRepl, it.repl, it.crop, THUMB_MAX);
+        it.thumbRepl.parentElement.classList.toggle('empty', !it.repl);
+        it.thumbRepl.style.visibility = it.repl ? '' : 'hidden';
+    }
+
+    function updateBadges(it) {
+        if (!it.badgesEl) return;
+        const o = txtOwner(it);
+        let html = '';
+        if (it.repl) html += '<span class="badge mod">換</span>';
+        if (it.crop) html += '<span class="badge mod">裁</span>';
+        if (isTxtDirty(o)) html += '<span class="badge mod">字</span>';
+        if (o.txtOriginal === null && o.txtCurrent === '') html += '<span class="badge notxt">無txt</span>';
+        if (it.badgesEl._html !== html) { it.badgesEl.innerHTML = html; it.badgesEl._html = html; }
+    }
+
+    listFilter.addEventListener('change', () => { fileList.scrollTop = 0; applyFilter(); });
+
+    async function generateThumbs() {
+        const gen = ++thumbGen;
+        const list = items;
+        for (let i = 0; i < list.length; i++) {
+            if (gen !== thumbGen) return;
+            const it = list[i];
+            if (it.orig) continue;
+            try {
+                await ensureOrig(it);
+                drawItemThumbs(it);
+                if (selected.includes(it)) renderCenter(true);
+            } catch (err) {
+                console.warn('預覽圖產生失敗：', it.rel, err);
+            }
+            if (i % 10 === 9) setAlert(`⏳ 產生預覽圖 ${i + 1} / ${list.length}`);
+        }
+        if (gen === thumbGen && items.length) setAlert(`✅ 已載入 ${items.length} 張圖片`);
+    }
+
+    // ---------- 選取 ----------
+    function onItemClick(it, e) {
+        const vis = visibleItems();
+        if (e.shiftKey && anchor && vis.includes(anchor)) {
+            const a = vis.indexOf(anchor), b = vis.indexOf(it);
+            const range = vis.slice(Math.min(a, b), Math.max(a, b) + 1);
+            const set = new Set((e.ctrlKey || e.metaKey) ? selected.concat(range) : range);
+            setSelection(Array.from(set), anchor);
+        } else if (e.ctrlKey || e.metaKey) {
+            const set = new Set(selected);
+            if (set.has(it)) { if (set.size > 1) set.delete(it); } else set.add(it);
+            setSelection(Array.from(set), it, it);
+        } else {
+            setSelection([it], it);
+        }
+    }
+
+    function setSelection(list, newAnchor, focusItem) {
+        if (cropMode) exitCropMode(false);
+        selected = items.filter(x => list.includes(x));
+        anchor = newAnchor || selected[0] || null;
+        for (const x of items) if (x.el) x.el.classList.toggle('active', selected.includes(x));
+        // 換頁到剛點的那張所在頁
+        const f = focusItem && selected.includes(focusItem) ? focusItem : selected[0];
+        page = f ? Math.floor(selected.indexOf(f) / PAGE_SIZE) : 0;
+        if (f && f.el) f.el.scrollIntoView({ block: 'nearest' });
+        updatePanelButtons();
+        renderCenter();
+    }
+
+    function updatePanelButtons() {
+        btnReplace.disabled = !selected.length;
+        btnReplace.textContent = selected.length > 1 ? `替換圖片 (${selected.length})` : '替換圖片';
+        btnUnreplace.disabled = !selected.some(it => it.repl);
+    }
+
+    // ---------- 中間區域 ----------
+    // keep=true 代表只是預覽圖剛產生好，不重設視角
+    function renderCenter(keep) {
+        if (selected.length > 1) {
+            current = null;
+            singleView.classList.add('hidden');
+            gridView.classList.remove('hidden');
+            renderGrid();
+        } else {
+            gridView.classList.add('hidden');
+            singleView.classList.remove('hidden');
+            pager.classList.add('hidden');
+            showSingle(selected[0] || null, keep);
+        }
+        updateToolbar();
+    }
+
+    async function showSingle(it, keep) {
+        const token = ++loadToken;
+        const changed = current !== it;
+        current = it;
+        if (!it) {
+            viewport.classList.remove('has-loaded-content');
+            txtEditor.disabled = true;
+            txtEditor.value = '';
+            txtName.textContent = '—';
+            txtStatus.className = 'status-pill';
+            txtStatus.textContent = '未載入';
+            txtStats.textContent = '';
+            updateCropUI();
+            return;
+        }
+        if (changed || document.activeElement !== txtEditor) txtEditor.value = txtOwner(it).txtCurrent;
+        txtEditor.disabled = false;
+        updateTextHeader();
+        try { await ensureOrig(it); } catch (err) { setAlert('❌ 無法讀取圖片：' + it.rel); return; }
+        if (token !== loadToken) return;
+        const s = src(it);
+        viewport.classList.add('has-loaded-content');
+        stage.style.width = s.w + 'px';
+        stage.style.height = s.h + 'px';
+        previewCanvas.style.width = s.w + 'px';
+        previewCanvas.style.height = s.h + 'px';
+        renderPreview();
+        if (changed || !keep) fitView();
+        updateCropUI();
+        const vis = visibleItems(), i = vis.indexOf(it);
+        if (i >= 0) prefetchHi([vis[i + 1], vis[i - 1]]);
+    }
+
+    function renderPreview() {
+        if (!current || !src(current)) return;
+        drawView(previewCanvas, src(current), cropMode ? null : current.crop);
+    }
+
+    function renderGrid() {
+        const pages = Math.ceil(selected.length / PAGE_SIZE);
+        page = clamp(page, 0, pages - 1);
+        const list = selected.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+        const n = list.length;
+        const cols = n <= 3 ? n : (n === 4 ? 2 : 3);
+        const rows = Math.ceil(n / cols);
+        gridView.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+        gridView.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+        // 保留正在輸入的文字框焦點
+        const focused = document.activeElement && document.activeElement.closest && document.activeElement.closest('.cell');
+        if (focused && gridView.contains(focused) && gridView.dataset.key === list.map(x => x.rel).join('|')) {
+            list.forEach((it, i) => drawView(gridView.children[i].querySelector('canvas'), src(it), it.crop));
+        } else {
+            gridView.innerHTML = '';
+            gridView.dataset.key = list.map(x => x.rel).join('|');
+            for (const it of list) gridView.appendChild(makeCell(it));
+        }
+        prefetchHi(selected.slice((page + 1) * PAGE_SIZE, (page + 2) * PAGE_SIZE));
+        pager.classList.toggle('hidden', pages <= 1);
+        pageInfo.textContent = `${page + 1} / ${pages}`;
+        $('btnPrevPage').disabled = page <= 0;
+        $('btnNextPage').disabled = page >= pages - 1;
+    }
+
+    function makeCell(it) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        const imgBox = document.createElement('div');
+        imgBox.className = 'cell-img';
+        imgBox.title = '雙擊只看這一張';
+        const c = document.createElement('canvas');
+        drawView(c, src(it), it.crop);
+        imgBox.appendChild(c);
+        imgBox.addEventListener('dblclick', () => setSelection([it], it));
+
+        const text = document.createElement('div');
+        text.className = 'cell-text';
+        const head = document.createElement('div');
+        head.className = 'cell-head';
+        const nm = document.createElement('span');
+        nm.className = 'cname';
+        nm.textContent = it.rel + (it.repl ? '（已替換）' : '');
+        nm.title = txtOwner(it).txtRel;
+        const pill = document.createElement('span');
+        head.append(nm, pill);
+        const ta = document.createElement('textarea');
+        ta.spellcheck = false;
+        ta.placeholder = '同名 .txt 內容';
+        ta.value = txtOwner(it).txtCurrent;
+        const refreshPill = () => {
+            const st = textState(it);
+            pill.className = 'status-pill ' + st.cls;
+            pill.textContent = st.label;
+        };
+        refreshPill();
+        ta.addEventListener('input', () => {
+            txtOwner(it).txtCurrent = ta.value;
+            refreshPill();
+            syncSharedCells(it, ta);
+            refreshDirty();
+        });
+        ta._item = it; ta._refresh = refreshPill;
+        text.append(head, ta);
+        cell.append(imgBox, text);
+        return cell;
+    }
+
+    // 共用同一個 .txt 的格子同步內容
+    function syncSharedCells(it, except) {
+        const o = txtOwner(it);
+        gridView.querySelectorAll('textarea').forEach(t => {
+            if (t !== except && txtOwner(t._item) === o) { t.value = o.txtCurrent; t._refresh(); }
+        });
+    }
+
+    function textState(it) {
+        const o = txtOwner(it);
+        if (isTxtDirty(o)) return { cls: 'dirty', label: o.txtOriginal === null ? '新檔（未儲存）' : '已修改' };
+        if (o.txtOriginal === null) return { cls: 'missing', label: '缺少 .txt' };
+        return { cls: '', label: '未修改' };
+    }
+
+    $('btnPrevPage').addEventListener('click', () => { page--; renderGrid(); });
+    $('btnNextPage').addEventListener('click', () => { page++; renderGrid(); });
+
+    function updateToolbar() {
+        const multi = selected.length > 1;
+        $('btnFit').style.display = multi ? 'none' : '';
+        $('btn100').style.display = multi ? 'none' : '';
+        zoomVal.style.display = multi ? 'none' : '';
+        if (multi) imageInfo.innerHTML = `已選取 <b>${selected.length}</b> 張（雙擊格子圖片可單獨檢視、裁切）`;
+        updateCropUI();
+    }
+
+    function updateTextHeader() {
+        if (!current) return;
+        const o = txtOwner(current);
+        txtName.textContent = o.txtRel;
+        txtName.title = o.txtRel;
+        const st = textState(current);
+        txtStatus.className = 'status-pill ' + st.cls;
+        txtStatus.textContent = st.label;
+        const tags = o.txtCurrent.split(/[,\n]/).map(s => s.trim()).filter(Boolean).length;
+        txtStats.textContent = `${tags} 個標籤 · ${o.txtCurrent.length} 字`;
+        btnTxtRevert.disabled = !isTxtDirty(o);
+    }
+
+    txtEditor.addEventListener('input', () => {
+        if (!current) return;
+        txtOwner(current).txtCurrent = txtEditor.value;
+        updateTextHeader();
+        refreshDirty();
+    });
+
+    btnTxtRevert.addEventListener('click', () => {
+        if (!current) return;
+        const o = txtOwner(current);
+        o.txtCurrent = o.txtOriginal === null ? '' : o.txtOriginal;
+        txtEditor.value = o.txtCurrent;
+        updateTextHeader();
+        refreshDirty();
+    });
+
+    function refreshDirty() {
+        for (const it of items) updateBadges(it);
+        updateDirtyStats();
+        updatePanelButtons();
+        if (listFilter.value !== 'all') applyFilter();
+    }
+
+    function updateDirtyStats() {
+        const imgN = items.filter(isImgDirty).length;
+        const txtN = items.filter(it => !it.shared && isTxtDirty(it)).length;
+        $('statDirtyImg').textContent = imgN;
+        $('statDirtyTxt').textContent = txtN;
+        btnExport.disabled = imgN + txtN === 0;
+        btnExport.textContent = rootHandle
+            ? `覆寫儲存 ${imgN + txtN} 個改動 (Ctrl+S)`
+            : `下載 ${imgN + txtN} 個改動 (ZIP) (Ctrl+S)`;
+    }
+
+    // ---------- 替換圖片 ----------
+    btnReplace.addEventListener('click', () => { if (selected.length) replaceInput.click(); });
+
+    replaceInput.addEventListener('change', async () => {
+        const files = Array.from(replaceInput.files || []).filter(f => IMG_EXTS.includes(extOf(f.name)));
+        replaceInput.value = '';
+        if (!files.length) return;
+        files.sort((a, b) => naturalCmp(a.name, b.name));
+        const targets = selected.slice();
+        const n = Math.min(files.length, targets.length);
+        setAlert('⏳ 讀取替換圖片中...');
+        let okN = 0;
+        for (let i = 0; i < n; i++) {
+            try {
+                targets[i].repl = await makeSource(files[i]);
+                targets[i].crop = null;
+                drawItemThumbs(targets[i]);
+                okN++;
+            } catch (err) {
+                console.warn('替換圖片讀取失敗：', files[i].name, err);
+            }
+        }
+        applyFilter();
+        refreshDirty();
+        renderCenter();
+        let msg = `✅ 已替換 ${okN} 張（依檔名順序對應選取的圖片）`;
+        if (files.length > targets.length) msg += `\n多出的 ${files.length - targets.length} 張新圖未使用`;
+        if (files.length < targets.length) msg += `\n選取的圖片中有 ${targets.length - files.length} 張沒有對應的新圖`;
+        setAlert(msg);
+    });
+
+    btnUnreplace.addEventListener('click', () => {
+        for (const it of selected) {
+            if (!it.repl) continue;
+            it.repl = null;
+            it.crop = null; // 裁切座標屬於替換圖，一併清除
+            drawItemThumbs(it);
+        }
+        applyFilter();
+        refreshDirty();
+        renderCenter();
+    });
+
+    // ---------- 視角（單選） ----------
+    function applyView() {
+        stage.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.s})`;
+        stage.style.setProperty('--s', view.s);
+        zoomVal.textContent = Math.round(view.s * 100) + '%';
+    }
+
+    function fitView() {
+        if (!current || !src(current)) return;
+        const s = src(current);
+        const vw = viewport.clientWidth, vh = viewport.clientHeight;
+        view.s = Math.min(vw / s.w, vh / s.h) * 0.92;
+        view.tx = (vw - s.w * view.s) / 2;
+        view.ty = (vh - s.h * view.s) / 2;
+        applyView();
+    }
+
+    function zoomAt(px, py, newS) {
+        newS = Math.min(32, Math.max(0.02, newS));
+        view.tx = px - (px - view.tx) * (newS / view.s);
+        view.ty = py - (py - view.ty) * (newS / view.s);
+        view.s = newS;
+        applyView();
+    }
+
+    $('btnFit').addEventListener('click', fitView);
+    $('btn100').addEventListener('click', () => {
+        if (!current) return;
+        zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1);
+    });
+    window.addEventListener('resize', () => { if (current) fitView(); });
+
+    viewport.addEventListener('wheel', (e) => {
+        if (!current) return;
+        e.preventDefault();
+        const r = viewport.getBoundingClientRect();
+        zoomAt(e.clientX - r.left, e.clientY - r.top, view.s * Math.exp(-e.deltaY * 0.0015));
+    }, { passive: false });
+
+    function toImage(e) {
+        const r = viewport.getBoundingClientRect();
+        return { x: (e.clientX - r.left - view.tx) / view.s, y: (e.clientY - r.top - view.ty) / view.s };
+    }
+
+    let drag = null;
+    viewport.addEventListener('pointerdown', (e) => {
+        if (!current || !src(current)) return;
+        const wantPan = e.button === 1 || (e.button === 0 && (!cropMode || spaceDown));
+        if (wantPan) {
+            e.preventDefault();
+            drag = { type: 'pan', sx: e.clientX, sy: e.clientY, tx: view.tx, ty: view.ty };
+            viewport.classList.add('panning');
+        } else if (e.button === 0 && cropMode) {
+            e.preventDefault();
+            const p = toImage(e);
+            const h = e.target.dataset && e.target.dataset.h;
+            if (h) {
+                drag = { type: 'resize', h, start: { ...draftCrop }, p0: p };
+            } else if (e.target === cropBox) {
+                drag = { type: 'move', start: { ...draftCrop }, p0: p };
+            } else {
+                const s = src(current);
+                const x = clamp(p.x, 0, s.w), y = clamp(p.y, 0, s.h);
+                drag = { type: 'new', ax: x, ay: y, start: draftCrop };
+                draftCrop = { x, y, w: 0, h: 0 };
+            }
+        } else return;
+        viewport.setPointerCapture(e.pointerId);
+    });
+
+    viewport.addEventListener('pointermove', (e) => {
+        if (!drag) return;
+        if (drag.type === 'pan') {
+            view.tx = drag.tx + (e.clientX - drag.sx);
+            view.ty = drag.ty + (e.clientY - drag.sy);
+            applyView();
+            return;
+        }
+        const s = src(current);
+        const p = toImage(e);
+        if (drag.type === 'move') {
+            const st = drag.start;
+            draftCrop = {
+                x: clamp(st.x + p.x - drag.p0.x, 0, s.w - st.w),
+                y: clamp(st.y + p.y - drag.p0.y, 0, s.h - st.h),
+                w: st.w, h: st.h
+            };
+        } else if (drag.type === 'new') {
+            const sx = p.x >= drag.ax ? 1 : -1, sy = p.y >= drag.ay ? 1 : -1;
+            draftCrop = cornerRect(drag.ax, drag.ay, Math.abs(p.x - drag.ax), Math.abs(p.y - drag.ay), sx, sy);
+        } else if (drag.type === 'resize') {
+            draftCrop = resizeRect(drag.start, drag.h, p.x - drag.p0.x, p.y - drag.p0.y);
+        }
+        updateCropBox();
+    });
+
+    function endDrag() {
+        if (!drag) return;
+        if (drag.type !== 'pan' && draftCrop && (draftCrop.w < MIN_CROP || draftCrop.h < MIN_CROP)) {
+            draftCrop = drag.start || defaultCrop();
+            updateCropBox();
+        }
+        drag = null;
+        viewport.classList.remove('panning');
+    }
+    viewport.addEventListener('pointerup', endDrag);
+    viewport.addEventListener('pointercancel', endDrag);
+    viewport.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
+
+    // ---------- 裁切計算（來源圖原尺寸座標） ----------
+    const dims = () => src(current);
+    const ratio = () => dims().w / dims().h;
+
+    function cornerRect(ax, ay, w, h, sx, sy) {
+        const d = dims();
+        const maxW = sx > 0 ? d.w - ax : ax;
+        const maxH = sy > 0 ? d.h - ay : ay;
+        if (lockRatio.checked) {
+            const r = ratio();
+            w = Math.max(w, h * r);
+            w = Math.min(w, maxW, maxH * r);
+            h = w / r;
+        } else {
+            w = Math.min(w, maxW);
+            h = Math.min(h, maxH);
+        }
+        return { x: sx > 0 ? ax : ax - w, y: sy > 0 ? ay : ay - h, w, h };
+    }
+
+    function resizeRect(s, handle, dx, dy) {
+        const d = dims();
+        const r = ratio();
+        const left = s.x, top = s.y, right = s.x + s.w, bottom = s.y + s.h;
+        if (handle.length === 2) {
+            const sx = handle.includes('e') ? 1 : -1, sy = handle.includes('s') ? 1 : -1;
+            const ax = sx > 0 ? left : right, ay = sy > 0 ? top : bottom;
+            let w = s.w + dx * sx, h = s.h + dy * sy;
+            if (lockRatio.checked) { const k = Math.max(w / s.w, h / s.h); w = s.w * k; h = s.h * k; }
+            return cornerRect(ax, ay, Math.max(w, 0), Math.max(h, 0), sx, sy);
+        }
+        let x = left, y = top, w = s.w, h = s.h;
+        if (handle === 'e' || handle === 'w') {
+            w = handle === 'e' ? clamp(s.w + dx, 0, d.w - left) : clamp(s.w - dx, 0, right);
+            if (handle === 'w') x = right - w;
+            if (lockRatio.checked) {
+                const cy = top + s.h / 2;
+                const maxH = 2 * Math.min(cy, d.h - cy);
+                h = Math.min(w / r, maxH); w = h * r;
+                if (handle === 'w') x = right - w;
+                y = cy - h / 2;
+            }
+        } else {
+            h = handle === 's' ? clamp(s.h + dy, 0, d.h - top) : clamp(s.h - dy, 0, bottom);
+            if (handle === 'n') y = bottom - h;
+            if (lockRatio.checked) {
+                const cx = left + s.w / 2;
+                const maxW = 2 * Math.min(cx, d.w - cx);
+                w = Math.min(h * r, maxW); h = w / r;
+                if (handle === 'n') y = bottom - h;
+                x = cx - w / 2;
+            }
+        }
+        return { x, y, w, h };
+    }
+
+    function roundCrop(c) {
+        const d = dims();
+        const x = clamp(Math.round(c.x), 0, d.w - 1);
+        const y = clamp(Math.round(c.y), 0, d.h - 1);
+        const w = clamp(Math.round(c.w), 1, d.w - x);
+        const h = clamp(Math.round(c.h), 1, d.h - y);
+        return { x, y, w, h };
+    }
+
+    function defaultCrop() {
+        const d = dims();
+        const w = d.w * 0.8, h = d.h * 0.8;
+        return { x: (d.w - w) / 2, y: (d.h - h) / 2, w, h };
+    }
+
+    function updateCropBox() {
+        if (!draftCrop) return;
+        cropBox.style.left = draftCrop.x + 'px';
+        cropBox.style.top = draftCrop.y + 'px';
+        cropBox.style.width = draftCrop.w + 'px';
+        cropBox.style.height = draftCrop.h + 'px';
+        const c = roundCrop(draftCrop), d = dims();
+        cropBadge.textContent = `裁切 ${c.w} × ${c.h}  →  輸出 ${d.w} × ${d.h}`;
+    }
+
+    function enterCropMode() {
+        if (!current || !src(current) || cropMode || selected.length > 1) return;
+        cropMode = true;
+        draftCrop = current.crop ? { ...current.crop } : defaultCrop();
+        viewport.classList.add('crop-mode');
+        cropBadge.classList.add('show');
+        renderPreview();
+        updateCropBox();
+        updateCropUI();
+    }
+
+    function exitCropMode(apply) {
+        if (!cropMode) return;
+        if (apply && current && draftCrop) {
+            const c = roundCrop(draftCrop), d = dims();
+            const full = c.x === 0 && c.y === 0 && c.w === d.w && c.h === d.h;
+            current.crop = full ? null : c;
+        }
+        cropMode = false;
+        draftCrop = null;
+        drag = null;
+        viewport.classList.remove('crop-mode', 'panning');
+        cropBadge.classList.remove('show');
+        renderPreview();
+        updateCropUI();
+        if (apply && current) {
+            drawItemThumbs(current);
+            refreshDirty();
+        }
+    }
+
+    function updateCropUI() {
+        const has = selected.length === 1 && !!current && !!src(current);
+        btnCropMode.disabled = !has;
+        btnCropMode.classList.toggle('on', cropMode);
+        btnCropMode.textContent = cropMode ? '裁切中…' : (selected.length > 1 ? '多選時無法裁切' : '進入裁切模式 (C)');
+        btnCropApply.disabled = !cropMode;
+        btnCropCancel.disabled = !cropMode;
+        btnCropReset.disabled = !has || !current.crop;
+        if (!has) {
+            cropInfo.textContent = selected.length > 1 ? '雙擊格子圖片切換成單張後即可裁切' : '尚未裁切';
+            if (selected.length <= 1) imageInfo.textContent = '';
+            return;
+        }
+        const c = current.crop, d = src(current);
+        cropInfo.innerHTML = c
+            ? `裁切範圍：<b>${c.w} × ${c.h}</b>（起點 ${c.x}, ${c.y}）<br>輸出尺寸：<b>${d.w} × ${d.h}</b>（放大 ${(d.w / c.w).toFixed(2)}×）`
+            : '尚未裁切';
+        const tags = [];
+        if (current.repl) tags.push(`已替換（${current.repl.file.name}）`);
+        if (c) tags.push('已裁切');
+        imageInfo.innerHTML = `<b></b> · ${d.w} × ${d.h}${tags.length ? ' · <span style="color:var(--accent-gold)"></span>' : ''}`;
+        imageInfo.querySelector('b').textContent = current.rel;
+        if (tags.length) imageInfo.querySelector('span').textContent = tags.join('、') + '，預覽為輸出結果';
+    }
+
+    btnCropMode.addEventListener('click', enterCropMode);
+    btnCropApply.addEventListener('click', () => exitCropMode(true));
+    btnCropCancel.addEventListener('click', () => exitCropMode(false));
+    btnCropReset.addEventListener('click', () => {
+        if (!current) return;
+        if (cropMode) exitCropMode(false);
+        current.crop = null;
+        renderPreview();
+        updateCropUI();
+        drawItemThumbs(current);
+        refreshDirty();
+    });
+    lockRatio.addEventListener('change', () => {
+        if (cropMode && lockRatio.checked && draftCrop) {
+            const d = dims();
+            const cx = draftCrop.x + draftCrop.w / 2, cy = draftCrop.y + draftCrop.h / 2;
+            const r = ratio();
+            let w = draftCrop.w, h = w / r;
+            if (h > draftCrop.h) { h = draftCrop.h; w = h * r; }
+            draftCrop = { x: clamp(cx - w / 2, 0, d.w - w), y: clamp(cy - h / 2, 0, d.h - h), w, h };
+            updateCropBox();
+        }
+    });
+
+    // ---------- 輸出 ----------
+    // 瀏覽器不能編碼 BMP，自己寫 24-bit BMP
+    function encodeBMP(canvas) {
+        const w = canvas.width, h = canvas.height;
+        const data = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+        const rowSize = Math.ceil(w * 3 / 4) * 4;
+        const size = 54 + rowSize * h;
+        const buf = new ArrayBuffer(size);
+        const v = new DataView(buf);
+        v.setUint16(0, 0x4d42, true);
+        v.setUint32(2, size, true);
+        v.setUint32(10, 54, true);
+        v.setUint32(14, 40, true);
+        v.setInt32(18, w, true);
+        v.setInt32(22, h, true);
+        v.setUint16(26, 1, true);
+        v.setUint16(28, 24, true);
+        v.setUint32(34, rowSize * h, true);
+        const out = new Uint8Array(buf);
+        for (let y = 0; y < h; y++) {
+            let o = 54 + (h - 1 - y) * rowSize;
+            for (let x = 0; x < w; x++) {
+                const i = (y * w + x) * 4;
+                out[o++] = data[i + 2]; out[o++] = data[i + 1]; out[o++] = data[i];
+            }
+        }
+        return new Blob([buf], { type: 'image/bmp' });
+    }
+
+    // 從原檔（或替換圖）高清繪製，輸出成原檔的格式
+    async function renderOutputBlob(it) {
+        const s = src(it);
+        const mime = mimeOf(it.ext);
+        // 替換圖本身已是同格式且沒裁切：直接寫入原始位元組，不重新壓縮
+        if (it.repl && !it.crop && mimeOf(extOf(it.repl.file.name)) === mime) return it.repl.file;
+        const bmp = await createImageBitmap(s.file);
+        const c = document.createElement('canvas');
+        c.width = bmp.width; c.height = bmp.height;
+        const ctx = c.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        if (mime === 'image/jpeg' || mime === 'image/bmp') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); }
+        const k = it.crop;
+        if (k) ctx.drawImage(bmp, k.x, k.y, k.w, k.h, 0, 0, c.width, c.height);
+        else ctx.drawImage(bmp, 0, 0);
+        bmp.close && bmp.close();
+        const blob = mime === 'image/bmp'
+            ? encodeBMP(c)
+            : await new Promise(res => c.toBlob(res, mime, mime === 'image/png' ? undefined : ENCODE_QUALITY));
+        c.width = c.height = 0;
+        if (!blob || (blob.type && blob.type !== mime)) throw new Error('瀏覽器無法編碼成 ' + it.ext.toUpperCase());
+        return blob;
+    }
+
+    const txtBlob = (o) => new Blob([o.txtCurrent.replace(/\n/g, o.eol)], { type: 'text/plain;charset=utf-8' });
+
+    async function getSubDir(root, path, create) {
+        let d = root;
+        for (const p of path.split('/').filter(Boolean)) d = await d.getDirectoryHandle(p, { create });
+        return d;
+    }
+
+    async function writeFile(handle, blob) {
+        const w = await handle.createWritable();
+        await w.write(blob);
+        await w.close();
+    }
+
+    async function exportChanges() {
+        if (cropMode) exitCropMode(true);
+        const imgJobs = items.filter(isImgDirty);
+        const txtJobs = items.filter(it => !it.shared && isTxtDirty(it));
+        const total = imgJobs.length + txtJobs.length;
+        if (!total) return;
+
+        if (rootHandle) {
+            const ok = confirm(`將直接覆寫原資料夾中的 ${total} 個檔案（圖片 ${imgJobs.length}、文字 ${txtJobs.length}）。` +
+                (backupOriginal.checked ? `\n原檔會先備份到 ${BACKUP_DIR}/ 底下。` : '\n未勾選備份，原檔將無法復原。') + '\n確定要繼續嗎？');
+            if (!ok) return;
+            try {
+                const perm = await rootHandle.requestPermission({ mode: 'readwrite' });
+                if (perm !== 'granted') { setAlert('❌ 沒有取得寫入權限'); return; }
+            } catch (err) { /* 舊版瀏覽器沒有 requestPermission */ }
+        }
+
+        btnExport.disabled = true;
+        const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '_').slice(0, 15);
+        const zip = rootHandle ? null : new JSZip();
+        let done = 0;
+        const failed = [];
+        const tick = () => setAlert(`⏳ 輸出中 ${++done} / ${total}`);
+
+        for (const it of imgJobs) {
+            try {
+                await ensureOrig(it);
+                const blob = await renderOutputBlob(it);
+                if (rootHandle) {
+                    if (backupOriginal.checked) {
+                        const bdir = await getSubDir(rootHandle, `${BACKUP_DIR}/${stamp}/${it.dir}`, true);
+                        await writeFile(await bdir.getFileHandle(it.imgName, { create: true }), it.imgFile);
+                    }
+                    await writeFile(it.imgHandle, blob);
+                    it.imgFile = await it.imgHandle.getFile();
+                } else {
+                    zip.file(it.rel, blob);
+                    it.imgFile = new File([blob], it.imgName, { type: mimeOf(it.ext) });
+                }
+                it.orig = src(it).file === blob ? { ...src(it), file: it.imgFile } : await makeSource(it.imgFile);
+                it.repl = null;
+                it.crop = null;
+                drawItemThumbs(it);
+            } catch (err) {
+                console.error(err);
+                failed.push(it.rel + '：' + (err && err.message ? err.message : err));
+            }
+            tick();
+        }
+
+        for (const it of txtJobs) {
+            try {
+                const blob = txtBlob(it);
+                if (rootHandle) {
+                    if (!it.txtHandle) {
+                        it.txtHandle = await it.dirHandle.getFileHandle(it.txtRel.split('/').pop(), { create: true });
+                    } else if (backupOriginal.checked) {
+                        const bdir = await getSubDir(rootHandle, `${BACKUP_DIR}/${stamp}/${it.dir}`, true);
+                        await writeFile(await bdir.getFileHandle(it.txtRel.split('/').pop(), { create: true }), await it.txtHandle.getFile());
+                    }
+                    await writeFile(it.txtHandle, blob);
+                } else {
+                    zip.file(it.txtRel, blob);
+                }
+                it.txtOriginal = it.txtCurrent;
+            } catch (err) {
+                console.error(err);
+                failed.push(it.txtRel + '：' + (err && err.message ? err.message : err));
+            }
+            tick();
+        }
+
+        if (zip) {
+            setAlert('⚡ 打包 ZIP 中...');
+            const blob = await zip.generateAsync({ type: 'blob' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `${rootName || 'dataset'}_changes_${stamp}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+        }
+
+        applyFilter();
+        refreshDirty();
+        current = null;
+        renderCenter();
+        const okN = total - failed.length;
+        setAlert((rootHandle ? `✅ 已覆寫 ${okN} 個檔案` : `✅ 已下載含 ${okN} 個檔案的 ZIP，解壓後覆蓋回原資料夾即可`) +
+            (failed.length ? `\n❌ 失敗 ${failed.length} 個：\n` + failed.join('\n') : ''));
+    }
+
+    btnExport.addEventListener('click', exportChanges);
+
+    // ---------- 快捷鍵與其他 ----------
+    function confirmDiscard() {
+        const n = items.filter(isImgDirty).length + items.filter(it => !it.shared && isTxtDirty(it)).length;
+        return !n || confirm(`還有 ${n} 個改動尚未輸出，確定要放棄並載入新資料夾嗎？`);
+    }
+
+    window.addEventListener('beforeunload', (e) => {
+        if (items.some(it => isImgDirty(it) || isTxtDirty(it))) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    function step(delta) {
+        if (selected.length > 1) {
+            const pages = Math.ceil(selected.length / PAGE_SIZE);
+            const np = clamp(page + delta, 0, pages - 1);
+            if (np !== page) { page = np; renderGrid(); }
+            return;
+        }
+        const vis = visibleItems();
+        if (!vis.length) return;
+        let i = vis.indexOf(current);
+        i = i < 0 ? 0 : clamp(i + delta, 0, vis.length - 1);
+        if (vis[i] !== current) setSelection([vis[i]], vis[i]);
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+            e.preventDefault();
+            if (!btnExport.disabled) exportChanges();
+            return;
+        }
+        const typing = e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT';
+        if (e.key === 'Escape') {
+            if (cropMode) { e.preventDefault(); exitCropMode(false); }
+            else if (typing) e.target.blur();
+            return;
+        }
+        if (typing) return;
+        if (e.key === ' ') { spaceDown = true; e.preventDefault(); return; }
+        if (e.key === 'Enter' && cropMode) { e.preventDefault(); exitCropMode(true); return; }
+        if (e.key === 'c' || e.key === 'C') { cropMode ? exitCropMode(false) : enterCropMode(); return; }
+        if (e.key === 'f' || e.key === 'F') { fitView(); return; }
+        if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === 'ArrowRight') { e.preventDefault(); step(1); }
+        if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
+    });
+    window.addEventListener('keyup', (e) => { if (e.key === ' ') spaceDown = false; });
+    window.addEventListener('blur', () => { spaceDown = false; });
+
+    $('btnToggleTips').addEventListener('click', (e) => { e.stopPropagation(); $('notePopup').classList.toggle('show'); });
+    document.addEventListener('click', (e) => { if (!e.target.closest('.tips-wrapper')) $('notePopup').classList.remove('show'); });
+    document.getElementById('sidebar').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) b.blur(); });
+    document.getElementById('right-panel').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) b.blur(); });
+</script>
+</body>
+</html>
