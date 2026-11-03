@@ -440,6 +440,8 @@
             background-size: auto, 24px 24px;
         }
 
+        .empty-hint { position: absolute; left: 0; right: 0; bottom: 9%; display: flex; justify-content: center; text-align: center; color: var(--text-muted); font-size: 13px; letter-spacing: 0.04em; line-height: 1.8; pointer-events: none; }
+        #viewport.has-loaded-content .empty-hint { display: none; }
         #viewport.panning { cursor: grabbing !important; }
         #viewport.item-dragging { cursor: move !important; }
         #pan-wrapper { 
@@ -668,6 +670,7 @@
             </div>
         </div>
         <div id="viewport">
+            <div class="empty-hint">請從左側載入 PSD 檔案或圖片資料夾</div>
             <div id="pan-wrapper">
                 <div id="scale-wrapper">
                     <div id="grid-container"></div>

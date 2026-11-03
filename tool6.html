@@ -321,7 +321,7 @@
         #viewport.crop-mode { cursor: crosshair; }
         #viewport.panning { cursor: grabbing !important; }
 
-        .empty-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 13px; letter-spacing: 0.04em; pointer-events: none; }
+        .empty-hint { position: absolute; left: 0; right: 0; bottom: 9%; display: flex; justify-content: center; text-align: center; color: var(--text-muted); font-size: 13px; letter-spacing: 0.04em; pointer-events: none; }
         #viewport.has-loaded-content .empty-hint { display: none; }
 
         #stage {
@@ -575,6 +575,9 @@
         .badge.mod { background: var(--accent-gold); color: var(--accent-black); }
         .badge.notxt { background: var(--danger-red); color: #fff; }
         .list-empty { grid-column: 1 / -1; color: var(--text-muted); font-size: 11px; text-align: center; padding: 30px 0; }
+        /* 選擇檔案／選擇資料夾：黑底白字（tool5～7 統一） */
+        .mini-grid button.pick-btn, button.pick-btn { background: var(--accent-black); color: var(--accent-white); border: 1px solid var(--border-glass-light); }
+        .mini-grid button.pick-btn:hover:not(:disabled), button.pick-btn:hover:not(:disabled) { background: var(--accent-white); color: var(--accent-black); }
     </style>
 </head>
 <body>
@@ -589,7 +592,7 @@
 
         <div class="control-group">
             <h3><span class="num-tag">01</span> 選擇訓練包資料夾</h3>
-            <button id="btnPickFolder">選擇資料夾</button>
+            <button id="btnPickFolder" class="pick-btn">選擇資料夾</button>
             <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
             <label class="check-row" style="margin-top:10px;">
                 包含子資料夾

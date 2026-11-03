@@ -344,10 +344,10 @@
         .vid-ui .time { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
         #empty {
-            position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            position: absolute; left: 0; right: 0; bottom: 9%; display: flex; flex-direction: column; align-items: center;
             pointer-events: none; color: var(--text-muted); font-size: 13px; letter-spacing: 0.04em; text-align: center; line-height: 1.8;
         }
-        #empty .empty-title { font-size: 34px; font-weight: 300; letter-spacing: 0.2em; color: var(--text-primary); opacity: 0.55; }
+        #empty .empty-title { display: none; }
 
         #drop-hint {
             position: absolute; inset: 8px; border: 2px dashed var(--accent-gold); border-radius: var(--radius-lg);
@@ -472,6 +472,9 @@
         #psd-panel .actions button { width: auto; padding: 8px 18px; }
         #psd-panel .actions #psd-cancel { background: rgba(255, 255, 255, 0.1); color: var(--text-primary); border: 1px solid var(--border-glass); box-shadow: none; }
 
+        /* 選擇檔案／選擇資料夾：黑底白字（tool5～7 統一） */
+        .mini-grid button.pick-btn, button.pick-btn { background: var(--accent-black); color: var(--accent-white); border: 1px solid var(--border-glass-light); }
+        .mini-grid button.pick-btn:hover:not(:disabled), button.pick-btn:hover:not(:disabled) { background: var(--accent-white); color: var(--accent-black); }
         [hidden] { display: none !important; }
     </style>
 </head>
@@ -488,8 +491,8 @@
         <div class="control-group">
             <h3><span class="num-tag">01</span> 載入圖片 / PSD</h3>
             <div class="mini-grid">
-                <button data-act="import" title="選擇圖片或 PSD（可多選）">選擇檔案</button>
-                <button data-act="import-folder" title="選擇整個資料夾（裡面的圖片與 PSD 都會讀取）">選擇資料夾</button>
+                <button data-act="import" class="pick-btn" title="選擇圖片或 PSD（可多選）">選擇檔案</button>
+                <button data-act="import-folder" class="pick-btn" title="選擇整個資料夾（裡面的圖片與 PSD 都會讀取）">選擇資料夾</button>
             </div>
             <div class="hint">讀取的圖片會同時放上中間畫布，並累加到右邊的「當前庫內圖檔」；之後也可以從圖檔庫再拖曳（或雙擊）放上畫布。PSD 會先讓你勾選要讀取的圖層，放上畫布時保留原本的相對位置。也可以直接把檔案拖進畫布。<br>這個工具<b style="color:var(--text-secondary)">不會存檔</b>，關閉分頁後就會消失，需要的成果請用「輸出框線」存下來。</div>
             <button class="danger-btn" data-act="clear" id="btn-clear">清除畫布</button>
@@ -1083,9 +1086,14 @@ window.OE = window.OE || {};
     const t0 = performance.now();
     const cw = canvas.width, ch = canvas.height;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = '#1c171a';
-    ctx.fillRect(0, 0, cw, ch);
-    drawDots();
+    if (!OE.store.items.length) {
+      // 沒有圖時畫布透明，看得到底層背景 LOGO（跟 tool1～4 一樣）
+      ctx.clearRect(0, 0, cw, ch);
+    } else {
+      ctx.fillStyle = 'rgba(28, 23, 26, 0.88)';
+      ctx.fillRect(0, 0, cw, ch);
+      drawDots();
+    }
 
     const s = cam.s * dpr;
     const hw = W / 2 / cam.s, hh = H / 2 / cam.s;
@@ -1257,7 +1265,7 @@ window.OE = window.OE || {};
     init() {
       canvas = document.getElementById('canvas');
       overlay = document.getElementById('overlay');
-      ctx = canvas.getContext('2d', { alpha: false });
+      ctx = canvas.getContext('2d');
       octx = overlay.getContext('2d');
       window.addEventListener('resize', resize);
       if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas.parentNode);
