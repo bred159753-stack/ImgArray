@@ -481,7 +481,15 @@
         <div class="control-group">
             <h3><span class="num-tag">06</span> 匯出</h3>
             <label>檔名前綴 <input type="text" id="filePrefix" placeholder="(可留空)" style="width:140px"></label>
-            <label class="check-row">ZIP 內附框設定 layout.json <input type="checkbox" id="includeLayout" checked></label>
+            <label>命名規則
+                <select id="namingRule" style="width:140px; margin-top:4px;">
+                    <option value="num_name">流水號_名稱 (01_name)</option>
+                    <option value="name_num">名稱_流水號 (name_01)</option>
+                    <option value="name_only">僅名稱 (name)</option>
+                    <option value="num_only">僅流水號 (01)</option>
+                </select>
+            </label>
+            <label class="check-row" style="margin-top:10px">ZIP 內附框設定 layout.json <input type="checkbox" id="includeLayout" checked></label>
             <button id="exportZipBtn" disabled>匯出所有切圖 (ZIP)</button>
             <button class="export-btn" id="sendToTool4Btn" disabled>送到 Tool 4 去背</button>
             <button class="export-btn" id="sendToLocalBtn" disabled>送到本機去背工具（ImageMatting）</button>
@@ -564,6 +572,7 @@
     const duplicateBtn = document.getElementById('duplicateBtn');
     const deleteBtn = document.getElementById('deleteBtn');
     const filePrefix = document.getElementById('filePrefix');
+    const namingRule = document.getElementById('namingRule');
     const includeLayout = document.getElementById('includeLayout');
     const exportZipBtn = document.getElementById('exportZipBtn');
     const sendToTool4Btn = document.getElementById('sendToTool4Btn');
@@ -1419,6 +1428,31 @@
         return name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'box';
     }
 
+    function generateExportFilename(index, totalCount, boxName, prefix, rule) {
+        const pad = Math.max(2, String(totalCount).length);
+        const numStr = String(index + 1).padStart(pad, '0');
+        const cleanName = sanitizeName(boxName);
+        let baseName = '';
+
+        switch (rule) {
+            case 'name_num':
+                baseName = `${cleanName}_${numStr}`;
+                break;
+            case 'name_only':
+                baseName = cleanName;
+                break;
+            case 'num_only':
+                baseName = numStr;
+                break;
+            case 'num_name':
+            default:
+                baseName = `${numStr}_${cleanName}`;
+                break;
+        }
+
+        return `${prefix}${baseName}.png`;
+    }
+
     function layoutData() {
         return {
             tool: 'ImgArray tool3',
@@ -1443,13 +1477,13 @@
         try {
             const zip = new JSZip();
             const prefix = filePrefix.value.trim() ? sanitizeName(filePrefix.value.trim()) + '_' : '';
-            const pad = Math.max(2, String(boxes.length).length);
+            const rule = namingRule.value;
             const used = new Set();
             for (let i = 0; i < boxes.length; i++) {
                 const b = boxes[i];
                 exportZipBtn.innerText = `切圖中 ${i + 1} / ${boxes.length}`;
                 const blob = await cropToBlob(b);
-                let fileName = `${prefix}${String(i + 1).padStart(pad, '0')}_${sanitizeName(b.name)}.png`;
+                let fileName = generateExportFilename(i, boxes.length, b.name, prefix, rule);
                 while (used.has(fileName)) fileName = fileName.replace(/\.png$/, '_1.png');
                 used.add(fileName);
                 zip.file(fileName, blob);
@@ -1831,12 +1865,17 @@
         sendToTool4Btn.disabled = true;
         const original = sendToTool4Btn.innerText;
         try {
-            const pad = Math.max(2, String(boxes.length).length);
+            const prefix = filePrefix.value.trim() ? sanitizeName(filePrefix.value.trim()) + '_' : '';
+            const rule = namingRule.value;
             const list = [];
+            const used = new Set();
             for (let i = 0; i < boxes.length; i++) {
                 sendToTool4Btn.innerText = `準備中 ${i + 1} / ${boxes.length}`;
                 const b = boxes[i];
-                list.push({ name: `${String(i + 1).padStart(pad, '0')}_${sanitizeName(b.name)}`, blob: await cropToBlob(b), prompt: '' });
+                let itemFileName = generateExportFilename(i, boxes.length, b.name, prefix, rule).replace(/\.png$/, '');
+                while (used.has(itemFileName)) itemFileName += '_1';
+                used.add(itemFileName);
+                list.push({ name: itemFileName, blob: await cropToBlob(b), prompt: '' });
             }
             await idbPut('tool3-to-tool4', { createdAt: Date.now(), source: imgName, items: list });
             // 在工具箱 (index.html) 裡就請它切到 Tool 4；單獨開啟時直接換頁
@@ -1882,13 +1921,17 @@
                 showAlert('連不到本機去背工具：請先點 ImageMatting 資料夾裡的 run.bat 啟動，再按一次。（瀏覽器如果詢問是否允許存取區域網路裝置，請按允許）');
                 return;
             }
-            const pad = Math.max(2, String(boxes.length).length);
+            const prefix = filePrefix.value.trim() ? sanitizeName(filePrefix.value.trim()) + '_' : '';
+            const rule = namingRule.value;
             const fd = new FormData();
             const names = [];
+            const used = new Set();
             for (let i = 0; i < boxes.length; i++) {
                 sendToLocalBtn.innerText = `準備中 ${i + 1} / ${boxes.length}`;
                 const b = boxes[i];
-                const name = `${String(i + 1).padStart(pad, '0')}_${sanitizeName(b.name)}`;
+                let name = generateExportFilename(i, boxes.length, b.name, prefix, rule).replace(/\.png$/, '');
+                while (used.has(name)) name += '_1';
+                used.add(name);
                 names.push(name);
                 fd.append('images', await cropToBlob(b), name + '.png');
             }
