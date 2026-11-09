@@ -522,7 +522,7 @@
                         <li><b>拖曳 ⊕ 箭頭把手</b>從選取的方塊拉出一條箭頭（可拉多條）</li>
                         <li><b>A 或「箭頭」</b>從方塊拖曳到目標拉出箭頭</li>
                         <li><b>點箭頭 / 拖曳端點</b>選取箭頭 / 改變指向位置</li>
-                        <li><b>拖入輸入圖片</b>依檔名自動對應 LoadImage 節點並顯示；也可以點節點裡的圖片區選圖</li>
+                        <li><b>拖入圖片</b>輸入圖依檔名對應 LoadImage 節點；存圖／預覽節點把圖拖到節點上（或依檔名開頭對應）；也可以點節點裡的圖片區選圖</li>
                         <li><b>雙擊節點裡的欄位</b>顯示完整文字，可以選取或按「複製」</li>
                         <li><b>Delete</b>刪除選取的箭頭或方塊</li>
                         <li><b>方向鍵（Shift 加大）</b>微調方塊位置</li>
@@ -718,6 +718,7 @@ function parseWorkflow(wf){
     let pid = o.parentId ?? linkExt.get(o.id), guard = 0;
     while (pid != null && reroutes.has(pid) && guard++ < 100){ const r = reroutes.get(pid); via.unshift([r.x, r.y]); pid = r.parentId; }
     links.push({p0, p1, via, color: (o.color) || typeColor(t)});
+    (b.srcs || (b.srcs = [])).push(a);
   }
   return finishGraph({nodes, groups, links, reroutes:[...reroutes.values()], format:'UI'});
 }
@@ -820,15 +821,36 @@ function imgKeyOf(v){
   if (!IMG_RE.test(s)) return null;
   return s.split(/[\\/]/).pop().toLowerCase();
 }
+// 存圖／預覽節點（SaveImage、PreviewImage 等）：沒有檔名，用節點 id 當 key
+const OUTPUT_NODE_RE = /(save|preview).*(image|video|animated|webp|gif)|image.*(save|preview)/i;
+// 往上游找 batch_size（例如 EmptyLatentImage 的 batch_size、RepeatLatentBatch 的 amount），決定存圖節點會產出幾張
+function findBatch(n){
+  let best = 1; const seen = new Set(), q = [n];
+  while (q.length){
+    const x = q.shift(); if (seen.has(x)) continue; seen.add(x);
+    x.widgets.forEach(w => { if (/^(batch_size|amount)$/i.test(w.name || '') && Number.isFinite(+w.value)) best = Math.max(best, +w.value); });
+    (x.srcs || []).forEach(s => q.push(s));
+  }
+  return Math.max(1, Math.min(64, Math.round(best)));
+}
 function tagImageNodes(g){
   g.nodes.forEach(n => {
-    if (n.isNote) return;
-    const w = n.widgets.find(w => !w.linked && imgKeyOf(w.value));
-    if (!w) return;
-    const name = String(w.value).replace(/\s*\[(input|output|temp)\]\s*$/i, '').trim().split(/[\\/]/).pop();
+    if (n.isNote || n.img) return;
     let top = n.widgetStart;
     n.widgets.forEach(x => { top = Math.max(top, x.y + x.hh + WIDGET_GAP); });
-    n.img = {key:name.toLowerCase(), name, top: top + 4};
+    const w = n.widgets.find(w => !w.linked && imgKeyOf(w.value));
+    if (!w){
+      if (!OUTPUT_NODE_RE.test(n.type)) return;
+      const pw = n.widgets.find(x => /prefix/i.test(x.name) && typeof x.value === 'string');
+      const prefix = pw ? String(pw.value).split(/[\\/]/).pop() : '';
+      const slots = findBatch(n);
+      n.img = {key:'out:' + n.id, name: n.title + ' 輸出圖', top: top + 4, output:true, prefix, slots};
+      const minH = slots > 1 ? 220 : 110;
+      if (n.h < n.img.top + minH) n.h = n.img.top + (g.format === 'UI' ? minH : 220);
+      return;
+    }
+    const name = String(w.value).replace(/\s*\[(input|output|temp)\]\s*$/i, '').trim().split(/[\\/]/).pop();
+    n.img = {key:name.toLowerCase(), name, top: top + 4, slots:1};
     if (n.h < n.img.top + 110) n.h = n.img.top + (g.format === 'UI' ? 110 : 220);
   });
 }
@@ -1132,37 +1154,88 @@ function getImg(key){
   return im.complete && im.naturalWidth ? im : null;
 }
 function nodeImgRect(n){ return {x:n.x + 10, y:n.y + n.img.top, w:n.w - 20, h:n.h - n.img.top - 8}; }
+const slotKey = (n, i) => i ? n.img.key + '#' + i : n.img.key;
+// 格數 = 偵測到的 batch 張數；存圖節點放進更多張時會自動增加
+function slotCount(n){
+  let k = n.img.slots || 1;
+  if (n.img.output){ const pre = n.img.key + '#'; for (const key in S.images){ if (key.startsWith(pre)){ const i = parseInt(key.slice(pre.length), 10); if (i + 1 > k) k = i + 1; } } }
+  return k;
+}
+// 從第 start 格開始放：先放這格，其餘依序放進空格；存圖節點格子不夠就自動加格
+async function fillNode(n, start, files){
+  let c = 0; if (!files.length) return 0;
+  await setNodeImage(slotKey(n, start), files.shift()); c++;
+  if (!n.img.output) return c;
+  for (const k of emptySlots(n, start)){ if (!files.length) break; await setNodeImage(k, files.shift()); c++; }
+  while (files.length){ await setNodeImage(slotKey(n, slotCount(n)), files.shift()); c++; }
+  return c;
+}
+function firstFreeSlot(n){ const k = slotCount(n); for (let i = 0; i < k; i++) if (!S.images[slotKey(n, i)]) return i; return n.img.output ? k : 0; }
+function slotRects(n){
+  const r = nodeImgRect(n), k = slotCount(n);
+  if (k === 1) return [r];
+  // 圖片緊貼排列：依第一張已放入圖片的比例決定格子形狀，挑格子最大的欄數，整組置中
+  let a = 1;
+  for (let i = 0; i < k; i++){ const im = getImg(slotKey(n, i)); if (im){ a = im.naturalWidth / im.naturalHeight; break; } }
+  let best = null;
+  for (let cols = 1; cols <= k; cols++){
+    const rows = Math.ceil(k / cols), cw = Math.min(r.w / cols, r.h / rows * a);
+    if (!best || cw > best.cw) best = {cols, rows, cw};
+  }
+  const cw = best.cw, ch = cw / a, ox = r.x + (r.w - cw * best.cols) / 2, oy = r.y + (r.h - ch * best.rows) / 2, out = [];
+  for (let i = 0; i < k; i++) out.push({x: ox + (i % best.cols) * cw, y: oy + Math.floor(i / best.cols) * ch, w: cw, h: ch});
+  return out;
+}
 function drawNodeImage(c, n, forExport){
   const r = nodeImgRect(n); if (r.h < 16 || r.w < 16) return;
-  const im = getImg(n.img.key);
-  if (im){
-    const k = Math.min(r.w / im.naturalWidth, r.h / im.naturalHeight);
-    const w = im.naturalWidth * k, h = im.naturalHeight * k;
-    c.drawImage(im, r.x + (r.w - w)/2, r.y + (r.h - h)/2, w, h);
-    return;
-  }
-  if (forExport) return;
+  const rects = slotRects(n), multi = rects.length > 1;
+  const ims = rects.map((_, i) => getImg(slotKey(n, i)));
+  const any = ims.some(Boolean);
+  if (!any && forExport) return;
   c.save();
-  rr(c, r.x, r.y, r.w, r.h, 8); c.fillStyle = 'rgba(0,0,0,0.22)'; c.fill();
-  c.setLineDash([6, 5]); c.strokeStyle = 'rgba(226,176,103,0.7)'; c.lineWidth = 1.5; c.stroke(); c.setLineDash([]);
-  c.textAlign = 'center'; c.textBaseline = 'middle';
-  const cx = r.x + r.w/2, cy = r.y + r.h/2;
-  c.font = `bold 13px ${FONT}`; c.fillStyle = '#e2b067'; c.fillText('缺少輸入圖片', cx, cy - 18);
-  c.font = `12px ${FONT}`; c.fillStyle = '#ccc'; c.fillText(fitText(c, n.img.name, r.w - 16), cx, cy + 1);
-  c.fillStyle = '#888'; c.fillText(fitText(c, '拖入同名圖片，或點這裡選圖', r.w - 16), cx, cy + 19);
+  if (!any){
+    rr(c, r.x, r.y, r.w, r.h, 8); c.fillStyle = 'rgba(0,0,0,0.22)'; c.fill();
+    c.setLineDash([6, 5]); c.strokeStyle = 'rgba(226,176,103,0.7)'; c.lineWidth = 1.5; c.stroke(); c.setLineDash([]);
+    if (multi){ c.strokeStyle = 'rgba(226,176,103,0.25)'; c.lineWidth = 1; rects.forEach(q => { rr(c, q.x, q.y, q.w, q.h, 6); c.stroke(); }); }
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    const cx = r.x + r.w/2, cy = r.y + r.h/2, out = n.img.output;
+    c.font = `bold 13px ${FONT}`; c.fillStyle = '#e2b067'; c.fillText(out ? (multi ? `尚未放入輸出圖片（共 ${rects.length} 張）` : '尚未放入輸出圖片') : '缺少輸入圖片', cx, cy - 18);
+    c.font = `12px ${FONT}`; c.fillStyle = '#ccc'; c.fillText(fitText(c, out ? (n.img.prefix ? '檔名開頭：' + n.img.prefix : n.title) : n.img.name, r.w - 16), cx, cy + 1);
+    c.fillStyle = '#888'; c.fillText(fitText(c, out ? '把圖拖到這裡（可一次多張），或點格子選圖' : '拖入同名圖片，或點這裡選圖', r.w - 16), cx, cy + 19);
+    c.restore(); return;
+  }
+  rects.forEach((q, i) => {
+    const im = ims[i];
+    if (im){
+      const k = Math.min(q.w / im.naturalWidth, q.h / im.naturalHeight), w = im.naturalWidth * k, h = im.naturalHeight * k;
+      c.drawImage(im, q.x + (q.w - w)/2, q.y + (q.h - h)/2, w, h);
+    } else if (!forExport){
+      rr(c, q.x, q.y, q.w, q.h, 6); c.fillStyle = 'rgba(0,0,0,0.22)'; c.fill();
+      c.setLineDash([4, 4]); c.strokeStyle = 'rgba(226,176,103,0.6)'; c.lineWidth = 1; c.stroke(); c.setLineDash([]);
+      c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = `12px ${FONT}`; c.fillStyle = '#999';
+      c.fillText('#' + (i + 1), q.x + q.w/2, q.y + q.h/2);
+    }
+  });
   c.restore();
 }
+// 回傳點到的圖片格：{n, i, key}
 function hitImageNode(gx, gy){
   if (!S.graph) return null;
-  for (let i = S.graph.nodes.length - 1; i >= 0; i--){
-    const n = S.graph.nodes[i]; if (!n.img || n.collapsed) continue;
+  for (let j = S.graph.nodes.length - 1; j >= 0; j--){
+    const n = S.graph.nodes[j]; if (!n.img || n.collapsed) continue;
     const r = nodeImgRect(n);
-    if (gx >= r.x && gx <= r.x + r.w && gy >= r.y && gy <= r.y + r.h) return n;
+    if (!(gx >= r.x && gx <= r.x + r.w && gy >= r.y && gy <= r.y + r.h)) continue;
+    const rects = slotRects(n);
+    let i = rects.findIndex(q => gx >= q.x && gx <= q.x + q.w && gy >= q.y && gy <= q.y + q.h);
+    if (i < 0) i = 0;
+    return {n, i, key: slotKey(n, i)};
   }
   return null;
 }
 function imageNodes(){ return S.graph ? S.graph.nodes.filter(n => n.img) : []; }
-function imageKeys(){ const m = new Map(); imageNodes().forEach(n => { if (!m.has(n.img.key)) m.set(n.img.key, n); }); return m; }
+function imageKeys(){ const m = new Map(); imageNodes().forEach(n => { for (let i = 0; i < slotCount(n); i++){ const k = slotKey(n, i); if (!m.has(k)) m.set(k, {n, i}); } }); return m; }
+// 一個節點裡還空著的格子（從 start 開始往後找）
+function emptySlots(n, start){ const out = []; const k = slotCount(n); for (let j = 0; j < k; j++){ const i = (start + j) % k; if (!S.images[slotKey(n, i)]) out.push(slotKey(n, i)); } return out; }
 function readDataUrl(file){ return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); }); }
 // 輸入圖片只存縮圖（長邊 THUMB_MAX），避免大圖讓畫面和存檔變慢
 const THUMB_MAX = 640;
@@ -1191,12 +1264,15 @@ async function setNodeImage(key, file){
   S.images[key] = await shrinkDataUrl(await readDataUrl(file));
   refreshInfo(); draw(); scheduleSave();
 }
-let imgPickKey = null;
-function pickImageFor(key){ imgPickKey = key; $('imgInput').click(); }
+let imgPick = null;
+function pickImageFor(key, n, i){ imgPick = {key, n, i}; $('imgInput').multiple = !!(n && n.img.output); $('imgInput').click(); }
 $('imgInput').onchange = async e => {
-  const f = e.target.files[0]; e.target.value = '';
-  if (f && imgPickKey){ await setNodeImage(imgPickKey, f); toast('已補上輸入圖片'); }
-  imgPickKey = null;
+  const files = [...e.target.files].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, {numeric:true})); e.target.value = '';
+  if (files.length && imgPick){
+    const c = imgPick.n ? await fillNode(imgPick.n, imgPick.i || 0, files) : (await setNodeImage(imgPick.key, files[0]), 1);
+    toast(`已放入 ${c} 張圖片`);
+  }
+  imgPick = null;
 };
 function removeNodeImage(key){ delete S.images[key]; refreshInfo(); draw(); scheduleSave(); }
 const isImageFile = f => /^image\//.test(f.type) || IMG_RE.test(f.name || '');
@@ -1223,13 +1299,31 @@ async function handleFiles(list, pt){
     const k = (f.name || '').toLowerCase();
     if (keys.has(k)){ await setNodeImage(k, f); done++; } else left.push(f);
   }
-  if (left.length){
-    let target = pt ? hitImageNode(pt[0], pt[1]) : null;
-    if (!target){ const miss = imageNodes().filter(n => !S.images[n.img.key]); if (miss.length === 1 && left.length === 1) target = miss[0]; }
-    if (target){ await setNodeImage(target.img.key, left.shift()); done++; }
+  left.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, {numeric:true}));
+  const hit = pt ? hitImageNode(pt[0], pt[1]) : null;
+  if (left.length && hit){
+    // 拖到某一格：先放這格，其餘依序放進同節點後面的空格
+    done += await fillNode(hit.n, hit.i, left);
   }
-  if (left.length) toast(`已補上 ${done} 張；${left.map(f => f.name).join('、')} 對不到輸入節點（可拖到節點的圖片區上，或在左側清單選圖）`, 4500);
-  else toast(`已補上 ${done} 張輸入圖片`);
+  // 存圖節點：依 filename_prefix 對應 ComfyUI 產出的檔名（例如 ComfyUI_00001_.png），多張依序放進各格
+  if (left.length){
+    for (const n of imageNodes().filter(n => n.img.output && n.img.prefix)){
+      const pre = n.img.prefix.toLowerCase();
+      const mine = left.filter(f => (f.name || '').toLowerCase().startsWith(pre));
+      if (!mine.length) continue;
+      if (imageNodes().filter(m => m.img.output && m.img.prefix && pre.startsWith(m.img.prefix.toLowerCase()) && m !== n).length) continue; // 有其他節點同前綴就不猜
+      mine.forEach(f => left.splice(left.indexOf(f), 1));
+      done += await fillNode(n, firstFreeSlot(n), mine);
+    }
+  }
+  if (left.length && !hit){
+    const miss = imageNodes().filter(n => emptySlots(n, 0).length);
+    const outs = imageNodes().filter(n => n.img.output);
+    if (miss.length === 1) done += await fillNode(miss[0], firstFreeSlot(miss[0]), left);
+    else if (!miss.length && outs.length === 1) done += await fillNode(outs[0], firstFreeSlot(outs[0]), left);
+  }
+  if (left.length) toast(`已補上 ${done} 張；${left.map(f => f.name).join('、')} 對不到節點（可拖到節點的圖片區上，或在左側清單選圖）`, 4500);
+  else toast(`已補上 ${done} 張圖片`);
 }
 
 function drawAnnotation(c, a, hideText){
@@ -1597,7 +1691,7 @@ function endDrag(){
   } else if ((d.kind === 'move' && d.moved) || d.kind === 'resize' || (d.kind === 'arrowEnd' && d.moved)){
     undoStack.push(d.before); if (undoStack.length > 200) undoStack.shift(); redoStack = []; lastCkKey = ''; updateUndoBtns(); scheduleSave();
   } else if (d.kind === 'pan'){
-    if (d.imgNode && !d.moved) pickImageFor(d.imgNode.img.key);
+    if (d.imgNode && !d.moved) pickImageFor(d.imgNode.key, d.imgNode.n, d.imgNode.i);
     scheduleSave();
   }
   draw();
@@ -1649,6 +1743,7 @@ $('wrCopy').onclick = async () => {
   toast(sel ? '已複製選取的文字' : '已複製全部文字');
 };
 $('wrText').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') closeReader(); });
+window.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('wReader').hidden) closeReader(); });
 cv.addEventListener('pointerdown', () => { if (!$('wReader').hidden) closeReader(); }, true);
 cv.addEventListener('wheel', () => { if (!$('wReader').hidden) closeReader(); }, {capture:true, passive:true});
 
@@ -1893,16 +1988,17 @@ function refreshImgList(){
   if (!keys.size) return;
   const have = [...keys.keys()].filter(k => S.images[k]).length;
   const head = document.createElement('div'); head.className = 'il-head';
-  head.innerHTML = `<span>輸入圖片</span><span>${have} / ${keys.size}</span>`;
+  head.innerHTML = `<span>節點圖片（輸入／輸出）</span><span>${have} / ${keys.size}</span>`;
   el.appendChild(head);
-  keys.forEach((n, k) => {
+  keys.forEach(({n, i}, k) => {
+    const label = n.img.name + (slotCount(n) > 1 ? ` #${i + 1}` : '');
     const row = document.createElement('div'); row.className = 'il-row';
     const th = document.createElement('div'); th.className = 'il-thumb' + (S.images[k] ? ' ok' : '');
     if (S.images[k]) th.style.backgroundImage = `url("${S.images[k]}")`;
     const nm = document.createElement('div'); nm.className = 'il-name'; nm.title = '點一下跳到這個節點';
-    nm.innerHTML = `${escapeHtml(n.img.name)}<small class="${S.images[k] ? '' : 'miss'}">${S.images[k] ? escapeHtml(n.title) : '缺少圖片：拖入同名檔或按「選圖」'}</small>`;
+    nm.innerHTML = `${escapeHtml(label)}<small class="${S.images[k] ? '' : 'miss'}">${S.images[k] ? escapeHtml(n.title) : n.img.output ? '尚未放圖：拖到節點上或按「選圖」' : '缺少圖片：拖入同名檔或按「選圖」'}</small>`;
     nm.onclick = () => centerOn({x:n.x, y:n.y - TITLE_H, w:n.w, h:n.h + TITLE_H});
-    const b = document.createElement('button'); b.textContent = S.images[k] ? '更換' : '選圖'; b.onclick = () => pickImageFor(k);
+    const b = document.createElement('button'); b.textContent = S.images[k] ? '更換' : '選圖'; b.onclick = () => pickImageFor(k, n, i);
     row.append(th, nm, b);
     if (S.images[k]){ const x = document.createElement('button'); x.className = 'danger'; x.textContent = '移除'; x.onclick = () => removeNodeImage(k); row.append(x); }
     el.appendChild(row);

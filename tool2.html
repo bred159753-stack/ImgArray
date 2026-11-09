@@ -348,6 +348,20 @@
         }
         #scale-wrapper { display: inline-block; transform-origin: center center; will-change: transform; }
 
+        #folderTree { max-height: 240px; overflow: auto; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border-glass); border-radius: var(--radius-md); padding: 6px; font-size: 12px; user-select: none; }
+        #folderTree::-webkit-scrollbar { width: 5px; height: 5px; }
+        #folderTree::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 999px; }
+        #folderTree .tree-empty { color: var(--text-muted); padding: 8px 10px; }
+        .tree-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; cursor: pointer; white-space: nowrap; border-left: 3px solid transparent; border-radius: var(--radius-sm); min-width: max-content; transition: background 0.15s; }
+        .tree-row:hover { background: rgba(255, 255, 255, 0.08); }
+        .tree-row.selected { background: rgba(255, 255, 255, 0.15); border-left-color: var(--accent-white); font-weight: 600; }
+        .tree-row.empty { color: var(--text-muted); }
+        .tree-toggle { width: 14px; text-align: center; color: var(--text-muted); font-size: 10px; flex-shrink: 0; }
+        .tree-toggle:hover { color: var(--text-primary); }
+        .tree-name { color: var(--text-primary); }
+        .tree-row.empty .tree-name { color: var(--text-muted); }
+        .tree-count { color: var(--text-muted); font-size: 11px; margin-left: 4px; }
+        #folderTreeHint { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
         .empty-hint { position: absolute; left: 0; right: 0; bottom: 9%; display: flex; justify-content: center; text-align: center; color: var(--text-muted); font-size: 13px; letter-spacing: 0.04em; pointer-events: none; }
         #viewport.has-loaded-content .empty-hint { display: none; }
 
@@ -461,7 +475,9 @@
 
         <div class="control-group">
             <h3><span class="num-tag">02</span> 選擇資料夾 / 群組</h3>
-            <select id="groupSelect" style="width:100%"><option value="">請先載入 PSD 檔案</option></select>
+            <select id="groupSelect" hidden><option value="">請先載入 PSD 檔案</option></select>
+            <div id="folderTree"><div class="tree-empty">請先載入 PSD 檔案</div></div>
+            <div id="folderTreeHint">點選任一資料夾（含最上層與子資料夾）。資料夾裡的每張圖層各輸出一張；裡面的子資料夾會合併成一張圖層。隱藏的圖層或資料夾不會讀取。</div>
         </div>
 
         <div class="control-group">
@@ -536,6 +552,7 @@
                 <div class="note-popup" id="notePopup">
                     <h4>操作說明</h4>
                     <ul>
+                        <li><b>左側資料夾樹：</b>點選要輸出的資料夾；子資料夾會合併成一張，隱藏的不讀取。</li>
                         <li><b>點擊右側圖檔：</b>切換預覽的圖層。</li>
                         <li><b>滑鼠滾輪：</b>縮放畫布視角 / 右側列表縮放。</li>
                         <li><b>中鍵拖曳：</b>移動畫布視角 / 捲動右側列表。</li>
@@ -585,6 +602,7 @@
 
     const psdInput = document.getElementById('psdInput');
     const groupSelect = document.getElementById('groupSelect');
+    const folderTree = document.getElementById('folderTree');
     const useRelativePos = document.getElementById('useRelativePos');
     const syncCanvasSize = document.getElementById('syncCanvasSize');
     const autoDetectSize = document.getElementById('autoDetectSize');
@@ -765,40 +783,109 @@
         psdCanvasWidth = psd.width;
         psdCanvasHeight = psd.height;
         currentLoadedGroups = {};
-
-        if (psd.children) {
-            psd.children.forEach(child => {
-                if (child.children) {
-                    const groupName = child.name;
-                    const items = [];
-                    child.children.forEach(layer => {
-                        if (layer.canvas) {
-                            items.push({
-                                name: layer.name,
-                                canvas: layer.canvas,
-                                thumb: makeThumb(layer.canvas),
-                                left: layer.left,
-                                top: layer.top,
-                                width: layer.canvas.width,
-                                height: layer.canvas.height,
-                                canvasW: 300,
-                                canvasH: 300
-                            });
-                        }
-                    });
-                    if (items.length > 0) currentLoadedGroups[groupName] = items;
-                }
-            });
-        }
+        nodeById = {}; nodeIdCounter = 0;
+        psdTreeRoot = buildGroupNode(psd, file.name.replace(/\.psd$/i, ''));
 
         populateGroupSelect();
     });
 
+    /* ---------- PSD 資料夾樹（比照 tool1） ---------- */
+    let psdTreeRoot = null, nodeById = {}, nodeIdCounter = 0;
+    const isHidden = l => !!(l && (l.hidden || l.visible === false));
+    const hasPixels = l => !!(l && l.canvas && l.canvas.width > 0 && l.canvas.height > 0);
+    // 只建立「看得到」的資料夾；隱藏的資料夾整個略過
+    function buildGroupNode(layer, name) {
+        const node = { id: 'g' + (nodeIdCounter++), name: name || '(未命名)', layer, children: [], expanded: true, items: null };
+        nodeById[node.id] = node;
+        (layer.children || []).forEach(c => {
+            if (isHidden(c) || !c.children) return;
+            node.children.push(buildGroupNode(c, c.name));
+        });
+        node.count = (layer.children || []).filter(c => !isHidden(c) && (c.children ? groupHasPixels(c) : hasPixels(c))).length;
+        return node;
+    }
+    function groupHasPixels(g) {
+        return (g.children || []).some(c => !isHidden(c) && (c.children ? groupHasPixels(c) : hasPixels(c)));
+    }
+    // 子資料夾合併成一張：依 PSD 由下而上的順序疊圖，套用圖層／資料夾的不透明度
+    function mergeGroup(g) {
+        const parts = [];
+        (function collect(layer, alpha) {
+            (layer.children || []).forEach(c => {
+                if (isHidden(c)) return;
+                const a = alpha * (c.opacity == null ? 1 : c.opacity);
+                if (c.children) collect(c, a);
+                else if (hasPixels(c)) parts.push({ c: c.canvas, x: c.left || 0, y: c.top || 0, a });
+            });
+        })(g, 1);
+        if (!parts.length) return null;
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        parts.forEach(p => { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x + p.c.width); y1 = Math.max(y1, p.y + p.c.height); });
+        const cv = document.createElement('canvas');
+        cv.width = Math.max(1, x1 - x0); cv.height = Math.max(1, y1 - y0);
+        const g2 = cv.getContext('2d');
+        parts.forEach(p => { g2.globalAlpha = p.a; g2.drawImage(p.c, p.x - x0, p.y - y0); });
+        return { canvas: cv, left: x0, top: y0 };
+    }
+    function makeItem(name, canvas, left, top, isGroup) {
+        return { name, canvas, thumb: makeThumb(canvas), left, top, width: canvas.width, height: canvas.height, canvasW: 300, canvasH: 300, isGroup: !!isGroup };
+    }
+    function nodeItems(node) {
+        if (node.items) return node.items;
+        const items = [];
+        (node.layer.children || []).forEach(c => {
+            if (isHidden(c)) return;
+            if (c.children) { const m = mergeGroup(c); if (m) items.push(makeItem(c.name, m.canvas, m.left, m.top, true)); }
+            else if (hasPixels(c)) items.push(makeItem(c.name, c.canvas, c.left || 0, c.top || 0, false));
+        });
+        node.items = items;
+        currentLoadedGroups[node.id] = items;
+        return items;
+    }
+    function currentGroupName() {
+        const n = nodeById[groupSelect.value];
+        return n ? n.name : 'export_layers';
+    }
+    function renderFolderTree() {
+        folderTree.innerHTML = '';
+        if (!psdTreeRoot) { folderTree.innerHTML = '<div class="tree-empty">請先載入 PSD 檔案</div>'; return; }
+        const selectedId = groupSelect.value;
+        (function renderNode(node, depth) {
+            const row = document.createElement('div');
+            row.className = 'tree-row' + (node.id === selectedId ? ' selected' : '') + (node.count === 0 ? ' empty' : '');
+            row.style.paddingLeft = (6 + depth * 16) + 'px';
+            const toggle = document.createElement('span');
+            toggle.className = 'tree-toggle';
+            toggle.innerText = node.children.length ? (node.expanded ? '▼' : '▶') : '';
+            toggle.addEventListener('click', e => { e.stopPropagation(); node.expanded = !node.expanded; renderFolderTree(); });
+            const name = document.createElement('span'); name.className = 'tree-name'; name.innerText = node.name;
+            const count = document.createElement('span'); count.className = 'tree-count'; count.innerText = `(${node.count})`;
+            row.append(toggle, name, count);
+            row.addEventListener('click', () => selectFolder(node.id));
+            row.addEventListener('dblclick', () => { if (node.children.length) { node.expanded = !node.expanded; renderFolderTree(); } });
+            folderTree.appendChild(row);
+            if (node.expanded) node.children.forEach(c => renderNode(c, depth + 1));
+        })(psdTreeRoot, 0);
+    }
+    function selectFolder(id) {
+        const node = nodeById[id]; if (!node) return;
+        if (node.count === 0) { alertDiv.innerText = '⚠️ 這個資料夾裡沒有可顯示的圖層。'; return; }
+        alertDiv.innerText = '';
+        groupSelect.value = id;
+        selectedIndex = 0; palettePanY = 0; updatePaletteTransform();
+        renderFolderTree();
+        updateGroupData();
+    }
+
     function populateGroupSelect() {
         groupSelect.innerHTML = '';
-        const groupKeys = Object.keys(currentLoadedGroups);
+        Object.values(nodeById).forEach(n => {
+            const opt = document.createElement('option'); opt.value = n.id; opt.innerText = n.name; groupSelect.appendChild(opt);
+        });
+        const groupKeys = psdTreeRoot && psdTreeRoot.count > 0 || Object.values(nodeById).some(n => n.count > 0) ? ['ok'] : [];
 
         if (groupKeys.length === 0) {
+            renderFolderTree();
             alertDiv.innerText = "❌ 找不到可用的圖層群組！";
             currentGroupItems = [];
             paletteContainer.innerHTML = '';
@@ -809,12 +896,10 @@
         }
 
         alertDiv.innerText = "";
-        groupKeys.forEach(gName => {
-            const opt = document.createElement('option');
-            opt.value = gName;
-            opt.innerText = `${gName} (${currentLoadedGroups[gName].length} 個圖層)`;
-            groupSelect.appendChild(opt);
-        });
+        // 預設選第一個有內容的最上層資料夾（跟舊版一樣），沒有就選整個 PSD
+        let def = psdTreeRoot.children.find(n => n.count > 0) || (psdTreeRoot.count > 0 ? psdTreeRoot : Object.values(nodeById).find(n => n.count > 0));
+        groupSelect.value = def.id;
+        renderFolderTree();
 
         panX = 0; panY = 0; palettePanY = 0; selectedIndex = 0;
         updateTransform();
@@ -944,6 +1029,7 @@
 
     function updateGroupData() {
         const groupName = groupSelect.value;
+        if (groupName && nodeById[groupName]) nodeItems(nodeById[groupName]);
         if (!groupName || !currentLoadedGroups[groupName]) return;
 
         currentGroupItems = currentLoadedGroups[groupName];
@@ -1069,7 +1155,7 @@
         const isJpeg = exportFormat.value === 'jpeg';
         const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
         const ext = isJpeg ? 'jpg' : 'png';
-        const groupName = groupSelect.value || "export_layers";
+        const groupName = currentGroupName();
 
         const nameCounts = {};
         currentGroupItems.forEach(item => {
@@ -1243,7 +1329,8 @@
         const groupChanged = groupSelect.value !== snap.group;
         if (groupChanged) {
             groupSelect.value = snap.group;
-            currentGroupItems = currentLoadedGroups[snap.group] || [];
+            currentGroupItems = nodeById[snap.group] ? nodeItems(nodeById[snap.group]) : [];
+            renderFolderTree();
         }
         const c = snap.controls;
         useRelativePos.checked = c.useRelativePos;

@@ -480,15 +480,9 @@
 
         <div class="control-group">
             <h3><span class="num-tag">06</span> 匯出</h3>
-            <label>檔名前綴 <input type="text" id="filePrefix" placeholder="(可留空)" style="width:140px"></label>
-            <label>命名規則
-                <select id="namingRule" style="width:140px; margin-top:4px;">
-                    <option value="num_name">流水號_名稱 (01_name)</option>
-                    <option value="name_num">名稱_流水號 (name_01)</option>
-                    <option value="name_only">僅名稱 (name)</option>
-                    <option value="num_only">僅流水號 (01)</option>
-                </select>
-            </label>
+            <label>檔名規則 <input type="text" id="nameRule" value="[##]_{name}" spellcheck="false" style="width:170px"></label>
+            <div class="hint" style="margin-top:4px"><b>[##]</b> 流水號從 01 開始（# 的個數＝位數）；<b>[17]</b> 從 17 開始（位數照你打的）；<b>{name}</b> 框的名稱。<br>張數多到位數不夠時會自動補位，例如 [##] 變 [###]、[89] 變 [089]。</div>
+            <div class="hint" id="nameRulePreview" style="margin-top:4px; color:var(--text-secondary)"></div>
             <label class="check-row" style="margin-top:10px">ZIP 內附框設定 layout.json <input type="checkbox" id="includeLayout" checked></label>
             <button id="exportZipBtn" disabled>匯出所有切圖 (ZIP)</button>
             <button class="export-btn" id="sendToTool4Btn" disabled>送到 Tool 4 去背</button>
@@ -571,8 +565,8 @@
     const boxHInput = document.getElementById('boxH');
     const duplicateBtn = document.getElementById('duplicateBtn');
     const deleteBtn = document.getElementById('deleteBtn');
-    const filePrefix = document.getElementById('filePrefix');
-    const namingRule = document.getElementById('namingRule');
+    const nameRule = document.getElementById('nameRule');
+    const nameRulePreview = document.getElementById('nameRulePreview');
     const includeLayout = document.getElementById('includeLayout');
     const exportZipBtn = document.getElementById('exportZipBtn');
     const sendToTool4Btn = document.getElementById('sendToTool4Btn');
@@ -1368,6 +1362,7 @@
         sendToLocalBtn.disabled = !img || !boxes.length;
         exportLayoutBtn.disabled = !boxes.length;
         clearAllBtn.disabled = !boxes.length;
+        updateNameRulePreview();
     }
 
     function onSelectionChanged() {
@@ -1428,30 +1423,38 @@
         return name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'box';
     }
 
-    function generateExportFilename(index, totalCount, boxName, prefix, rule) {
-        const pad = Math.max(2, String(totalCount).length);
-        const numStr = String(index + 1).padStart(pad, '0');
-        const cleanName = sanitizeName(boxName);
-        let baseName = '';
-
-        switch (rule) {
-            case 'name_num':
-                baseName = `${cleanName}_${numStr}`;
-                break;
-            case 'name_only':
-                baseName = cleanName;
-                break;
-            case 'num_only':
-                baseName = numStr;
-                break;
-            case 'num_name':
-            default:
-                baseName = `${numStr}_${cleanName}`;
-                break;
-        }
-
-        return `${prefix}${baseName}.png`;
+    // 解析檔名規則：[##] = 從 1 開始、# 個數為位數；[17] = 從 17 開始、位數照打的數字；{name} = 框名稱
+    // 張數多到位數不夠時自動補位（[##] → [###]、[89] → [089]）
+    const SEQ_RE = /\[(#+|\d+)\]/;
+    function parseNameRule(rule, totalCount) {
+        let r = String(rule || '').trim() || '[##]_{name}';
+        if (!SEQ_RE.test(r)) r += '_[##]'; // 沒有流水號就自動加在後面，避免檔名重複
+        const m = r.match(SEQ_RE);
+        const tok = m[1];
+        const start = tok[0] === '#' ? 1 : parseInt(tok, 10);
+        const width0 = tok.length;
+        const last = start + Math.max(1, totalCount) - 1;
+        const width = Math.max(width0, String(last).length);
+        return { rule: r, start, width, widened: width > width0, tokenShown: tok[0] === '#' ? '[' + '#'.repeat(width) + ']' : '[' + String(start).padStart(width, '0') + ']' };
     }
+    function generateExportFilename(index, totalCount, boxName, prefix, rule) {
+        const info = parseNameRule(rule, totalCount);
+        const num = String(info.start + index).padStart(info.width, '0');
+        let base = info.rule.replace(SEQ_RE, num).replace(/\{name\}/gi, sanitizeName(boxName || 'box'));
+        base = base.replace(/\[(#+|\d+)\]/g, num); // 第二個流水號也一起換
+        base = base.replace(/[\\/:*?"<>|]/g, '_').trim() || num;
+        return `${prefix}${base}.png`;
+    }
+    function updateNameRulePreview() {
+        const n = boxes.length;
+        if (!n) { nameRulePreview.textContent = '預覽：' + generateExportFilename(0, 1, '名稱', '', nameRule.value); return; }
+        const info = parseNameRule(nameRule.value, n);
+        const f = i => generateExportFilename(i, n, boxes[i].name, '', nameRule.value);
+        let txt = '預覽：' + f(0) + (n > 1 ? '、' + f(1) : '') + (n > 2 ? ' … ' + f(n - 1) : '') + `（共 ${n} 張）`;
+        if (info.widened) txt += `；位數不夠，已自動改用 ${info.tokenShown}`;
+        nameRulePreview.textContent = txt;
+    }
+    nameRule.addEventListener('input', updateNameRulePreview);
 
     function layoutData() {
         return {
@@ -1476,8 +1479,8 @@
         const original = exportZipBtn.innerText;
         try {
             const zip = new JSZip();
-            const prefix = filePrefix.value.trim() ? sanitizeName(filePrefix.value.trim()) + '_' : '';
-            const rule = namingRule.value;
+            const prefix = '';
+            const rule = nameRule.value;
             const used = new Set();
             for (let i = 0; i < boxes.length; i++) {
                 const b = boxes[i];
@@ -1493,7 +1496,7 @@
             const content = await zip.generateAsync({ type: 'blob' }, meta => {
                 exportZipBtn.innerText = `壓縮中 ${meta.percent.toFixed(0)}%`;
             });
-            saveAs(content, `${prefix}${sanitizeName(imgName)}_slices.zip`);
+            saveAs(content, `${sanitizeName(imgName)}_slices.zip`);
             showAlert(`已匯出 ${boxes.length} 張切圖。`);
         } catch (err) {
             console.error(err);
@@ -1865,8 +1868,8 @@
         sendToTool4Btn.disabled = true;
         const original = sendToTool4Btn.innerText;
         try {
-            const prefix = filePrefix.value.trim() ? sanitizeName(filePrefix.value.trim()) + '_' : '';
-            const rule = namingRule.value;
+            const prefix = '';
+            const rule = nameRule.value;
             const list = [];
             const used = new Set();
             for (let i = 0; i < boxes.length; i++) {
@@ -1921,8 +1924,8 @@
                 showAlert('連不到本機去背工具：請先點 ImageMatting 資料夾裡的 run.bat 啟動，再按一次。（瀏覽器如果詢問是否允許存取區域網路裝置，請按允許）');
                 return;
             }
-            const prefix = filePrefix.value.trim() ? sanitizeName(filePrefix.value.trim()) + '_' : '';
-            const rule = namingRule.value;
+            const prefix = '';
+            const rule = nameRule.value;
             const fd = new FormData();
             const names = [];
             const used = new Set();
