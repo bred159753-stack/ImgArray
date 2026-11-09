@@ -486,10 +486,11 @@
             <h3><span class="num-tag">06</span> 匯出與儲存</h3>
             <div class="prop-row"><span class="pl">範圍</span><div class="seg" id="eRange"><button data-v="all" class="on">全部</button><button data-v="view">目前畫面</button></div></div>
             <div class="prop-row"><span class="pl">倍率</span><div class="seg" id="eScale"><button data-v="1">1x</button><button data-v="2" class="on">2x</button><button data-v="3">3x</button></div></div>
-            <label class="check-row">PNG 內嵌工作流＋註記 <input type="checkbox" id="eEmbed" checked></label>
+            <label class="check-row">內嵌工作流（可拖進 ComfyUI） <input type="checkbox" id="eEmbedWf" checked></label>
+            <label class="check-row">內嵌註記（畫上註記，可拖回本工具編輯） <input type="checkbox" id="eEmbedAnn" checked></label>
             <button id="btnExportPng" class="export-btn">匯出 PNG</button>
             <button id="btnSave" class="export-btn" title="儲存工作流＋註記 (Ctrl+S)">存註記檔 (.annot.json)</button>
-            <div class="hint">內嵌後：拖回本工具可繼續編輯註記與箭頭；拖進 ComfyUI 可直接載入原工作流。</div>
+            <div class="hint">內嵌註記＝圖上畫出文字方塊與箭頭，並附上註記資料。兩個都不勾就只匯出工作流的影像。</div>
         </div>
     </div>
 
@@ -603,7 +604,7 @@ const S = {
   wf:null, graph:null, fileName:'', ann:[], sel:null, selArrow:null, tool:'select',
   view:{x:0,y:0,s:1}, editing:null, editingIsNew:false,
   opts:{grid:true, ids:false, links:true, dim:false},
-  exp:{range:'all', scale:2, embed:true},
+  exp:{range:'all', scale:2, embedWf:true, embedAnn:true},
   def:{color:'#ffffff', size:28, bold:false, align:'left', fillMode:'solid', fill:'#2b2b2b', border:true, borderColor:'#e2b067', borderW:3},
   defArrow:{color:'#e2b067', width:4, head:22},
   images:{}, // 輸入圖片：小寫檔名 -> dataURL（存註記檔／匯出 PNG 時一起保存）
@@ -617,7 +618,7 @@ function resetSidebar(){
   [['oGrid','grid'],['oIds','ids'],['oLinks','links'],['oDim','dim']].forEach(([id,k]) => { $(id).checked = S.opts[k]; });
   $('eRange').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === S.exp.range));
   $('eScale').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === S.exp.scale));
-  $('eEmbed').checked = S.exp.embed;
+  $('eEmbedWf').checked = S.exp.embedWf; $('eEmbedAnn').checked = S.exp.embedAnn;
   if (typeof closeColorPop === 'function' && !$('colorPop').hidden) closeColorPop();
 }
 const LS_DEF = 'imgarrayTool7.def', LS_ARROW = 'imgarrayTool7.arrowDef', LS_SESSION = 'imgarrayTool7.session';
@@ -1414,7 +1415,7 @@ function hitArrowEnd(gx, gy){
   return Math.hypot(gx - f.r.ex, gy - f.r.ey) <= 9/S.view.s ? f : null;
 }
 
-function drawScene(c, vx0, vy0, vx1, vy1, s, forExport){
+function drawScene(c, vx0, vy0, vx1, vy1, s, forExport, noAnn){
   drawGrid(c, vx0, vy0, vx1, vy1, s, forExport);
   const g = S.graph;
   if (g){
@@ -1428,6 +1429,7 @@ function drawScene(c, vx0, vy0, vx1, vy1, s, forExport){
     g.nodes.forEach(n => vis(n.x, n.y - TITLE_H, n.collapsed ? n.cw : n.w, (n.collapsed ? 0 : n.h) + TITLE_H) && drawNode(c, n, detail, forExport));
     c.restore();
   }
+  if (noAnn) return;
   S.ann.forEach(a => drawAnnotation(c, a, !forExport && S.editing === a));
   S.ann.forEach(a => a.arrows.forEach(r => drawArrow(c, a, r)));
 }
@@ -2032,7 +2034,7 @@ $('fileInput').onchange = e => { const fs = [...e.target.files]; e.target.value 
   $(id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
   if (id === 'eRange') S.exp.range = b.dataset.v; else S.exp.scale = +b.dataset.v;
 }));
-$('eEmbed').onchange = e => S.exp.embed = e.target.checked;
+[['eEmbedWf','embedWf'],['eEmbedAnn','embedAnn']].forEach(([id,k]) => $(id).onchange = e => { S.exp[k] = e.target.checked; });
 $('btnExportPng').onclick = exportPng;
 $('btnSave').onclick = saveAnnotateFile;
 
@@ -2058,12 +2060,13 @@ function saveAnnotateFile(){
 }
 async function exportPng(){
   commitEdit();
-  if (!S.graph && !S.ann.length){ toast('請先載入工作流'); return; }
+  const drawAnn = S.exp.embedAnn; // 內嵌註記＝畫上註記＋附註記資料
+  if (!S.graph && !(drawAnn && S.ann.length)){ toast(S.graph || !S.ann.length ? '請先載入工作流' : '沒有工作流，請勾選「內嵌註記」'); return; }
   let b;
   if (S.exp.range === 'view'){ const W = cv.clientWidth, H = cv.clientHeight; b = {x:-S.view.x/S.view.s, y:-S.view.y/S.view.s, w:W/S.view.s, h:H/S.view.s}; }
   else {
     b = S.graph ? {...S.graph.bounds} : {x:S.ann[0].x, y:S.ann[0].y, w:1, h:1};
-    annRects().forEach(a => { const x1 = Math.max(b.x+b.w, a.x+a.w), y1 = Math.max(b.y+b.h, a.y+a.h); b.x = Math.min(b.x, a.x); b.y = Math.min(b.y, a.y); b.w = x1-b.x; b.h = y1-b.y; });
+    if (drawAnn) annRects().forEach(a => { const x1 = Math.max(b.x+b.w, a.x+a.w), y1 = Math.max(b.y+b.h, a.y+a.h); b.x = Math.min(b.x, a.x); b.y = Math.min(b.y, a.y); b.w = x1-b.x; b.h = y1-b.y; });
     const pad = 40; b = {x:b.x-pad, y:b.y-pad, w:b.w+pad*2, h:b.h+pad*2};
   }
   let k = S.exp.scale;
@@ -2074,17 +2077,16 @@ async function exportPng(){
   const c = oc.getContext('2d');
   if (!c){ alert('圖太大，瀏覽器無法建立畫布，請改用較小倍率或「目前畫面」'); return; }
   c.setTransform(k, 0, 0, k, -b.x*k, -b.y*k);
-  drawScene(c, b.x, b.y, b.x+b.w, b.y+b.h, k, true);
+  drawScene(c, b.x, b.y, b.x+b.w, b.y+b.h, k, true, !drawAnn);
   toast('匯出中…');
   const blob = await new Promise(r => oc.toBlob(r, 'image/png'));
   if (!blob){ alert('匯出失敗（圖可能太大），請改用較小倍率'); return; }
   let buf = await blob.arrayBuffer();
-  if (S.exp.embed && S.wf){
-    const entries = [['comfyannotate', asciiJson(annotatePayload())]];
-    if (!isApiFormat(S.wf)) entries.unshift(['workflow', asciiJson(S.wf)]); else entries.unshift(['prompt', asciiJson(S.wf)]);
-    buf = pngWithText(buf, entries);
-  }
-  download(new Blob([buf], {type:'image/png'}), (S.fileName || 'workflow') + '_註記.png');
+  const entries = [];
+  if (S.exp.embedWf && S.wf) entries.push(isApiFormat(S.wf) ? ['prompt', asciiJson(S.wf)] : ['workflow', asciiJson(S.wf)]);
+  if (S.exp.embedAnn && S.wf) entries.push(['comfyannotate', asciiJson(annotatePayload())]);
+  if (entries.length) buf = pngWithText(buf, entries);
+  download(new Blob([buf], {type:'image/png'}), (S.fileName || 'workflow') + (drawAnn && S.ann.length ? '_註記' : '') + '.png');
   toast(`已匯出 PNG（${W}×${H}${k < S.exp.scale ? '，因尺寸過大已自動降低倍率' : ''}）`, 3500);
 }
 
