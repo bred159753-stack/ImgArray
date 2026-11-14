@@ -585,6 +585,7 @@
                 <div class="note-popup" id="tipsPopup">
                     <h4>操作說明</h4>
                     <ul>
+                        <li><b>Ctrl+V</b>貼上剪貼簿的圖片（網頁「複製圖片」、Photoshop、PureRef 等），會放上畫布並加入圖檔庫</li>
                         <li><b>拖曳檔案到畫布</b>匯入圖片／影片／PSD（可一次多個或整個資料夾）</li>
                         <li><b>圖檔庫：點選 / Ctrl+點選 / Shift+點選</b>選取 / 加選 / 連續選取多張</li>
                         <li><b>圖檔庫：拖曳 / 雙擊</b>把圖放上畫布（拖曳放在滑鼠位置，選取多張時一起拖；雙擊放在畫面中央）</li>
@@ -1982,6 +1983,7 @@ window.OE = window.OE || {};
 
   // ---- 複製 / 貼上 ----
   let clipboard = null;
+  let clipboardMark = '';
 
   function cloneItems(list, dx, dy) {
     return list.map((it) => Object.assign(JSON.parse(JSON.stringify(it, (k, v) => (k[0] === '_' ? undefined : v))), {
@@ -2002,6 +2004,9 @@ window.OE = window.OE || {};
     const list = selItems();
     if (!list.length) return;
     clipboard = JSON.parse(OE.store.snapshot()).filter((it) => selected.has(it.id));
+    // 在系統剪貼簿留下記號，貼上時才知道最後複製的是畫布物件，不是外部圖片
+    clipboardMark = 'ImgArray-tool5-objects-' + U.uid();
+    try { navigator.clipboard.writeText(clipboardMark).catch(() => {}); } catch (e) { /* 不支援就略過 */ }
     U.toast(`已複製 ${clipboard.length} 個物件`);
   }
 
@@ -2668,7 +2673,7 @@ window.OE = window.OE || {};
     else if (ctrl && (k === 'a' || k === 'A')) setSelection(OE.store.items.map((it) => it.id));
     else if (ctrl && (k === 'd' || k === 'D')) duplicate();
     else if (ctrl && (k === 'c' || k === 'C')) copySelection();
-    else if (ctrl && (k === 'v' || k === 'V')) paste();
+    else if (ctrl && (k === 'v' || k === 'V')) return false; // 交給 paste 事件：剪貼簿有圖片就貼圖，否則貼上複製的物件
     else if (!ctrl && (k === 'r' || k === 'R')) frameAction();
     else if (!ctrl && (k === 't' || k === 'T')) textAction();
     else if (k === 'Enter' && selected.size === 1 && selItems()[0].type === 'text') editText(selItems()[0]);
@@ -2749,6 +2754,9 @@ window.OE = window.OE || {};
     renameFrame,
     align,
     lastPointer: null,
+    pasteObjects: () => paste(),
+    get hasCopied() { return !!(clipboard && clipboard.length); },
+    get copyMark() { return clipboardMark; },
     get tool() { return tool; },
     editText,
     finishEdit,
@@ -3575,6 +3583,63 @@ window.OE = window.OE || {};
     e.preventDefault();
   });
   window.addEventListener('keyup', (e) => { if (e.code === 'Space') spaceDown = false; });
+
+  // ---- Ctrl+V 貼上外部圖片（網頁「複製圖片」、Photoshop、PureRef…）：放上畫布並加入圖檔庫 ----
+  const IMG_URL_RE = /^https?:\/\/\S+\.(png|jpe?g|webp|gif|bmp|avif)(\?\S*)?$/i;
+  async function urlToFile(src, name) {
+    const res = await fetch(src, { mode: 'cors' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    if (!/^image\//.test(blob.type)) throw new Error('不是圖片');
+    return new File([blob], name + '.' + (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/\+.*/, ''), { type: blob.type });
+  }
+  function pasteName(i, n) {
+    const d = new Date(), p2 = (v) => String(v).padStart(2, '0');
+    return `貼上_${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}` + (n > 1 ? `_${i + 1}` : '');
+  }
+  document.addEventListener('paste', async (e) => {
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (!OE.editor.active) return;
+    const cd = e.clipboardData;
+    if (!cd) return;
+    e.preventDefault();
+    const text = (cd.getData('text/plain') || '').trim();
+    // 最後複製的是畫布上的物件 → 照舊貼上物件
+    if (OE.editor.hasCopied && text && text === OE.editor.copyMark) { OE.editor.pasteObjects(); return; }
+    let files = [...(cd.items || [])].filter((i) => i.kind === 'file' && /^image\//.test(i.type)).map((i) => i.getAsFile()).filter(Boolean);
+    if (!files.length && cd.files && cd.files.length) files = [...cd.files].filter((f) => /^image\//.test(f.type) || /\.(png|jpe?g|webp|gif|bmp|avif|svg)$/i.test(f.name));
+    // 沒有圖片資料時，試著從 HTML 的 <img> 或圖片網址抓圖（網站不允許時會失敗）
+    if (!files.length) {
+      const srcs = [];
+      const html = cd.getData('text/html');
+      if (html) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        doc.querySelectorAll('img[src]').forEach((im) => srcs.push(im.getAttribute('src')));
+      }
+      if (!srcs.length && IMG_URL_RE.test(text)) srcs.push(text);
+      if (srcs.length) {
+        const got = [];
+        for (let i = 0; i < srcs.length; i++) {
+          try { got.push(await urlToFile(srcs[i], pasteName(i, srcs.length))); } catch (err) { console.warn('抓圖失敗', srcs[i], err); }
+        }
+        if (!got.length) { OE.util.toast('這張網路圖片的網站不允許直接讀取，請在圖片上按右鍵選「複製圖片」再貼上', 4000); return; }
+        files = got;
+      }
+    }
+    if (!files.length) {
+      if (OE.editor.hasCopied) OE.editor.pasteObjects();
+      else OE.util.toast('剪貼簿裡沒有圖片');
+      return;
+    }
+    // 剪貼簿圖片沒有檔名（多半叫 image.png），改成「貼上_日期時間」
+    files = files.map((f, i) => (!f.name || /^image\.\w+$/i.test(f.name)) ? new File([f], pasteName(i, files.length) + '.' + ((f.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/\+.*/, '')), { type: f.type || 'image/png' }) : f);
+    const at = OE.editor.lastPointer || { x: OE.cam.x, y: OE.cam.y };
+    const created = await OE.importer.importFiles(files, at.x, at.y);
+    for (const it of created) if (it.type === 'image' && it._file) OE.library.addPlacedItem(it, it._file);
+    if (created.length) OE.library.render();
+    updateEmpty();
+  });
   window.addEventListener('blur', () => { spaceDown = false; });
 
   // ---- 按鈕 ----
