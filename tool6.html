@@ -223,6 +223,11 @@
         .stat-grid .gold b { color: var(--accent-gold); }
 
         #folderName { font-size: 12px; font-weight: 700; color: var(--accent-warm); margin-top: 10px; word-break: break-all; }
+        .crop-size { display: flex; gap: 10px; margin-top: 10px; }
+        .crop-size label { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); margin: 0; }
+        .crop-size input { width: 100%; min-width: 0; padding: 6px 8px; background: rgba(0, 0, 0, 0.35); color: var(--text-primary); border: 1px solid var(--border-glass); border-radius: var(--radius-sm); font-size: 12px; font-variant-numeric: tabular-nums; }
+        .crop-size input:focus { outline: none; border-color: var(--accent-white); }
+        .crop-size input:disabled { opacity: 0.45; }
         #cropInfo { font-size: 11px; color: var(--text-secondary); margin-top: 8px; line-height: 1.6; }
         #cropInfo b { color: var(--text-primary); }
 
@@ -618,13 +623,17 @@
                 <button id="btnCropApply" disabled>套用 (Enter)</button>
                 <button id="btnCropCancel" class="ghost-btn" disabled>取消 (Esc)</button>
             </div>
+            <div class="crop-size">
+                <label>寬 <input type="number" id="cropW" min="1" step="1" disabled title="裁切寬度（px），輸入後按 Enter"></label>
+                <label>高 <input type="number" id="cropH" min="1" step="1" disabled title="裁切高度（px），輸入後按 Enter"></label>
+            </div>
             <label class="check-row" style="margin-top:12px;">
                 鎖定原圖比例（避免放大後變形）
                 <input type="checkbox" id="lockRatio" checked>
             </label>
             <button id="btnCropReset" class="ghost-btn" style="margin-top:4px;" disabled>還原此圖（取消裁切）</button>
             <div id="cropInfo">尚未裁切</div>
-            <div class="hint">裁切後輸出時會自動放大回原圖尺寸。未勾選鎖定比例時，放大會拉伸變形。</div>
+            <div class="hint">可以直接在「寬／高」輸入裁切的像素大小（按 Enter），框會以目前中心調整。裁切後輸出時會自動放大回原圖尺寸。未勾選鎖定比例時，放大會拉伸變形。</div>
         </div>
 
         <div class="control-group">
@@ -755,6 +764,7 @@
     const btnCropCancel = $('btnCropCancel');
     const btnCropReset = $('btnCropReset');
     const lockRatio = $('lockRatio');
+    const cropWInput = $('cropW'), cropHInput = $('cropH');
     const cropInfo = $('cropInfo');
     const backupOriginal = $('backupOriginal');
     const backupRow = $('backupRow');
@@ -1634,7 +1644,32 @@
         cropBox.style.height = draftCrop.h + 'px';
         const c = roundCrop(draftCrop), d = dims();
         cropBadge.textContent = `裁切 ${c.w} × ${c.h}  →  輸出 ${d.w} × ${d.h}`;
+        if (document.activeElement !== cropWInput) cropWInput.value = c.w;
+        if (document.activeElement !== cropHInput) cropHInput.value = c.h;
     }
+
+    // 輸入寬高（px）：以目前框的中心為準調整，超出圖片就自動往內移；鎖定比例時另一邊跟著算
+    function setCropSize(which, val) {
+        if (!current || !src(current)) return;
+        if (!cropMode) enterCropMode();
+        if (!draftCrop) return;
+        const d = dims(), r = ratio();
+        let v = Math.round(+val);
+        if (!Number.isFinite(v) || v < 1) return;
+        let w = draftCrop.w, h = draftCrop.h;
+        if (which === 'w') { w = Math.min(v, d.w); if (lockRatio.checked) { h = w / r; if (h > d.h) { h = d.h; w = h * r; } } }
+        else { h = Math.min(v, d.h); if (lockRatio.checked) { w = h * r; if (w > d.w) { w = d.w; h = w / r; } } }
+        const cx = draftCrop.x + draftCrop.w / 2, cy = draftCrop.y + draftCrop.h / 2;
+        draftCrop = { x: clamp(cx - w / 2, 0, d.w - w), y: clamp(cy - h / 2, 0, d.h - h), w, h };
+        updateCropBox();
+    }
+    [[cropWInput, 'w'], [cropHInput, 'h']].forEach(([inp, which]) => {
+        inp.addEventListener('change', () => { setCropSize(which, inp.value); updateCropBox(); });
+        inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); setCropSize(which, inp.value); inp.blur(); updateCropBox(); }
+            e.stopPropagation();
+        });
+    });
 
     function enterCropMode() {
         if (!current || !src(current) || cropMode || selected.length > 1) return;
@@ -1675,7 +1710,12 @@
         btnCropApply.disabled = !cropMode;
         btnCropCancel.disabled = !cropMode;
         btnCropReset.disabled = !has || !current.crop;
-        if (!has) {
+        cropWInput.disabled = cropHInput.disabled = !has;
+        if (has && !cropMode) {
+            const c0 = current.crop || src(current);
+            cropWInput.value = c0.w; cropHInput.value = c0.h;
+        }
+        if (!has) { cropWInput.value = cropHInput.value = '';
             cropInfo.textContent = selected.length > 1 ? '雙擊格子圖片切換成單張後即可裁切' : '尚未裁切';
             if (selected.length <= 1) imageInfo.textContent = '';
             return;
