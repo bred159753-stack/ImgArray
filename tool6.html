@@ -627,13 +627,16 @@
                 <label>寬 <input type="number" id="cropW" min="1" step="1" disabled title="裁切寬度（px），輸入後按 Enter"></label>
                 <label>高 <input type="number" id="cropH" min="1" step="1" disabled title="裁切高度（px），輸入後按 Enter"></label>
             </div>
-            <label class="check-row" style="margin-top:12px;">
-                鎖定原圖比例（避免放大後變形）
+            <div style="margin-top:12px; font-size:12px; color:var(--text-secondary); font-weight:600;">輸出尺寸</div>
+            <label class="check-row" style="margin-top:6px;">跟裁切範圍一樣（不縮放） <input type="radio" name="outSize" value="crop" checked></label>
+            <label class="check-row">縮放成要取代的原圖尺寸 <input type="radio" name="outSize" value="target"></label>
+            <label class="check-row" style="margin-top:8px;">
+                鎖定原圖比例（依要取代的原圖）
                 <input type="checkbox" id="lockRatio" checked>
             </label>
             <button id="btnCropReset" class="ghost-btn" style="margin-top:4px;" disabled>還原此圖（取消裁切）</button>
             <div id="cropInfo">尚未裁切</div>
-            <div class="hint">可以直接在「寬／高」輸入裁切的像素大小（按 Enter），框會以目前中心調整。裁切後輸出時會自動放大回原圖尺寸。未勾選鎖定比例時，放大會拉伸變形。</div>
+            <div class="hint">可以直接在「寬／高」輸入裁切的像素大小（按 Enter），框會以目前中心調整。<br>輸出尺寸選「跟裁切範圍一樣」就照裁切大小輸出；選「縮放成原圖尺寸」會縮放成資料夾裡要被取代那張圖的大小（替換圖也會一起縮放）。鎖定原圖比例會照資料夾裡要被取代那張圖的比例裁切。</div>
         </div>
 
         <div class="control-group">
@@ -819,6 +822,14 @@
 
     const txtOwner = (it) => it.shared || it;
     const src = (it) => it.repl || it.orig;
+    // 輸出尺寸：'crop' = 跟裁切範圍一樣；'target' = 縮放成要取代的原圖（資料夾裡那張）的尺寸
+    const outMode = () => (document.querySelector('input[name="outSize"]:checked') || {}).value || 'crop';
+    function outDims(it, crop) {
+        const k = crop === undefined ? it.crop : crop;
+        if (outMode() === 'target' && it.orig) return { w: it.orig.w, h: it.orig.h };
+        if (k) return { w: k.w, h: k.h };
+        const s = src(it); return { w: s.w, h: s.h };
+    }
     const isImgDirty = (it) => !!it.crop || !!it.repl;
     const isTxtDirty = (it) => it.txtOriginal === null ? it.txtCurrent !== '' : it.txtCurrent !== it.txtOriginal;
 
@@ -1567,7 +1578,8 @@
 
     // ---------- 裁切計算（來源圖原尺寸座標） ----------
     const dims = () => src(current);
-    const ratio = () => dims().w / dims().h;
+    // 鎖定比例：永遠用「要取代的原圖」（資料夾裡那張）的比例
+    const ratio = () => current.orig ? current.orig.w / current.orig.h : dims().w / dims().h;
 
     function cornerRect(ax, ay, w, h, sx, sy) {
         const d = dims();
@@ -1632,7 +1644,8 @@
 
     function defaultCrop() {
         const d = dims();
-        const w = d.w * 0.8, h = d.h * 0.8;
+        let w = d.w * 0.8, h = d.h * 0.8;
+        if (lockRatio.checked) { const r = ratio(); if (w / h > r) w = h * r; else h = w / r; }
         return { x: (d.w - w) / 2, y: (d.h - h) / 2, w, h };
     }
 
@@ -1643,7 +1656,8 @@
         cropBox.style.width = draftCrop.w + 'px';
         cropBox.style.height = draftCrop.h + 'px';
         const c = roundCrop(draftCrop), d = dims();
-        cropBadge.textContent = `裁切 ${c.w} × ${c.h}  →  輸出 ${d.w} × ${d.h}`;
+        const o = outDims(current, c);
+        cropBadge.textContent = `裁切 ${c.w} × ${c.h}  →  輸出 ${o.w} × ${o.h}`;
         if (document.activeElement !== cropWInput) cropWInput.value = c.w;
         if (document.activeElement !== cropHInput) cropHInput.value = c.h;
     }
@@ -1720,10 +1734,10 @@
             if (selected.length <= 1) imageInfo.textContent = '';
             return;
         }
-        const c = current.crop, d = src(current);
-        cropInfo.innerHTML = c
-            ? `裁切範圍：<b>${c.w} × ${c.h}</b>（起點 ${c.x}, ${c.y}）<br>輸出尺寸：<b>${d.w} × ${d.h}</b>（放大 ${(d.w / c.w).toFixed(2)}×）`
-            : '尚未裁切';
+        const c = current.crop, d = src(current), o = outDims(current);
+        const sc = c ? o.w / c.w : o.w / d.w;
+        cropInfo.innerHTML = (c ? `裁切範圍：<b>${c.w} × ${c.h}</b>（起點 ${c.x}, ${c.y}）<br>` : '尚未裁切<br>')
+            + `輸出尺寸：<b>${o.w} × ${o.h}</b>` + (Math.abs(sc - 1) > 0.001 ? `（縮放 ${sc.toFixed(2)}×）` : '（不縮放）');
         const tags = [];
         if (current.repl) tags.push(`已替換（${current.repl.file.name}）`);
         if (c) tags.push('已裁切');
@@ -1744,6 +1758,11 @@
         drawItemThumbs(current);
         refreshDirty();
     });
+    document.querySelectorAll('input[name="outSize"]').forEach(r => r.addEventListener('change', () => {
+        if (cropMode && lockRatio.checked) lockRatio.dispatchEvent(new Event('change'));
+        if (cropMode) updateCropBox();
+        updateCropUI();
+    }));
     lockRatio.addEventListener('change', () => {
         if (cropMode && lockRatio.checked && draftCrop) {
             const d = dims();
@@ -1787,20 +1806,22 @@
 
     // 從原檔（或替換圖）高清繪製，輸出成原檔的格式
     async function renderOutputBlob(it) {
+        if (!it.orig && it.origP) await it.origP;
         const s = src(it);
         const mime = mimeOf(it.ext);
         // 替換圖本身已是同格式且沒裁切：直接寫入原始位元組，不重新壓縮
-        if (it.repl && !it.crop && mimeOf(extOf(it.repl.file.name)) === mime) return it.repl.file;
+        const o = outDims(it);
+        if (it.repl && !it.crop && o.w === s.w && o.h === s.h && mimeOf(extOf(it.repl.file.name)) === mime) return it.repl.file;
         const bmp = await createImageBitmap(s.file);
         const c = document.createElement('canvas');
-        c.width = bmp.width; c.height = bmp.height;
+        c.width = o.w; c.height = o.h;
         const ctx = c.getContext('2d');
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         if (mime === 'image/jpeg' || mime === 'image/bmp') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); }
         const k = it.crop;
         if (k) ctx.drawImage(bmp, k.x, k.y, k.w, k.h, 0, 0, c.width, c.height);
-        else ctx.drawImage(bmp, 0, 0);
+        else ctx.drawImage(bmp, 0, 0, c.width, c.height);
         bmp.close && bmp.close();
         const blob = mime === 'image/bmp'
             ? encodeBMP(c)
