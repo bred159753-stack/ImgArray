@@ -298,6 +298,9 @@
         .note-popup.show { display: block; }
         .note-popup h4 { font-size: 11px; font-weight: 700; color: var(--accent-warm); text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px; margin-bottom: 10px; }
         .note-popup ul { list-style: none; }
+        .popup-logo { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-subtle); }
+        .popup-logo .logo-mark { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: linear-gradient(180deg, hsl(0, 0%, 15%) 0%, hsl(0, 0%, 12%) 100%); color: #fff; font-weight: 800; font-size: 15px; letter-spacing: 0; font-family: Arial, var(--font-main, sans-serif); }
+        .popup-logo .logo-name { font-size: 12px; color: var(--text-secondary); letter-spacing: 0.02em; }
         .note-popup li { margin-bottom: 6px; display: flex; align-items: flex-start; gap: 6px; color: var(--text-secondary); }
         .note-popup li b { color: var(--text-primary); white-space: nowrap; min-width: 92px; }
 
@@ -544,6 +547,7 @@
                         <li><b>空白鍵（按住）</b>暫時看原圖</li>
                         <li><b>← / →</b>上一張、下一張</li>
                     </ul>
+                    <div class="popup-logo"><div class="logo-mark">M</div><div class="logo-name">Mooker</div></div>
                 </div>
             </div>
         </div>
