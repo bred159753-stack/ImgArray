@@ -871,15 +871,19 @@
         return it.origP;
     }
 
-    // 把來源（含裁切）畫到 canvas 上，比例為來源原比例；im 預設為輕量預覽圖，max 為 canvas 最長邊上限
-    function drawSource(canvas, s, crop, max, im) {
+    // 把來源（含裁切）畫到 canvas 上；out = 輸出尺寸（決定比例，省略則用裁切/來源比例）
+    // im 預設為輕量預覽圖，max 為 canvas 最長邊上限
+    function drawSource(canvas, s, crop, max, im, out) {
         if (!s) { canvas.width = 1; canvas.height = 1; return; }
         im = im || s.img;
-        let cw = im.width, ch = im.height;
-        if (max && Math.max(cw, ch) > max) {
-            const r = max / Math.max(cw, ch);
-            cw = Math.max(1, Math.round(cw * r)); ch = Math.max(1, Math.round(ch * r));
+        const k0 = im.width / s.w;
+        let cw = crop ? crop.w * k0 : im.width, ch = crop ? crop.h * k0 : im.height;
+        if (out && out.w > 0 && out.h > 0) {
+            const r = Math.max(cw, ch) / Math.max(out.w, out.h);
+            cw = out.w * r; ch = out.h * r;
         }
+        if (max && Math.max(cw, ch) > max) { const r = max / Math.max(cw, ch); cw *= r; ch *= r; }
+        cw = Math.max(1, Math.round(cw)); ch = Math.max(1, Math.round(ch));
         if (canvas.width !== cw) canvas.width = cw;
         if (canvas.height !== ch) canvas.height = ch;
         const ctx = canvas.getContext('2d');
@@ -927,13 +931,13 @@
     }
 
     // 中間區域用：先畫輕量預覽，高清版好了再補畫
-    function drawView(canvas, s, crop) {
+    function drawView(canvas, s, crop, out) {
         const id = canvas._drawId = (canvas._drawId || 0) + 1;
         if (!s) { drawSource(canvas, null); return; }
         const e = hiEntry(s);
-        if (e.bmp) { drawSource(canvas, s, crop, 0, e.bmp); return; }
-        drawSource(canvas, s, crop);
-        e.p.then(b => { if (b && !e.closed && canvas._drawId === id) drawSource(canvas, s, crop, 0, b); });
+        if (e.bmp) { drawSource(canvas, s, crop, 0, e.bmp, out); return; }
+        drawSource(canvas, s, crop, 0, null, out);
+        e.p.then(b => { if (b && !e.closed && canvas._drawId === id) drawSource(canvas, s, crop, 0, b, out); });
     }
 
     function prefetchHi(list) {
@@ -1153,8 +1157,8 @@
     function drawItemThumbs(it) {
         if (!it.el) return;
         // 裁切屬於「目前來源」：有替換時畫在右邊，沒替換時畫在原圖上
-        drawSource(it.thumbOrig, it.orig, it.repl ? null : it.crop, THUMB_MAX);
-        drawSource(it.thumbRepl, it.repl, it.crop, THUMB_MAX);
+        drawSource(it.thumbOrig, it.orig, it.repl ? null : it.crop, THUMB_MAX, null, !it.repl && it.crop ? outDims(it) : null);
+        drawSource(it.thumbRepl, it.repl, it.crop, THUMB_MAX, null, it.repl ? outDims(it) : null);
         it.thumbRepl.parentElement.classList.toggle('empty', !it.repl);
         it.thumbRepl.style.visibility = it.repl ? '' : 'hidden';
     }
@@ -1279,7 +1283,7 @@
 
     function renderPreview() {
         if (!current || !src(current)) return;
-        drawView(previewCanvas, src(current), cropMode ? null : current.crop);
+        drawView(previewCanvas, src(current), cropMode ? null : current.crop, cropMode ? null : outDims(current));
     }
 
     function renderGrid() {
@@ -1294,7 +1298,7 @@
         // 保留正在輸入的文字框焦點
         const focused = document.activeElement && document.activeElement.closest && document.activeElement.closest('.cell');
         if (focused && gridView.contains(focused) && gridView.dataset.key === list.map(x => x.rel).join('|')) {
-            list.forEach((it, i) => drawView(gridView.children[i].querySelector('canvas'), src(it), it.crop));
+            list.forEach((it, i) => drawView(gridView.children[i].querySelector('canvas'), src(it), it.crop, outDims(it)));
         } else {
             gridView.innerHTML = '';
             gridView.dataset.key = list.map(x => x.rel).join('|');
@@ -1314,7 +1318,7 @@
         imgBox.className = 'cell-img';
         imgBox.title = '雙擊只看這一張';
         const c = document.createElement('canvas');
-        drawView(c, src(it), it.crop);
+        drawView(c, src(it), it.crop, outDims(it));
         imgBox.appendChild(c);
         imgBox.addEventListener('dblclick', () => setSelection([it], it));
 
@@ -1762,6 +1766,8 @@
         if (cropMode && lockRatio.checked) lockRatio.dispatchEvent(new Event('change'));
         if (cropMode) updateCropBox();
         updateCropUI();
+        items.forEach(drawItemThumbs);
+        renderPreview();
     }));
     lockRatio.addEventListener('change', () => {
         if (cropMode && lockRatio.checked && draftCrop) {
@@ -1846,7 +1852,15 @@
     }
 
     async function exportChanges() {
+        const wasCrop = cropMode && current ? { it: current, crop: current.crop, draft: draftCrop && { ...draftCrop } } : null;
         if (cropMode) exitCropMode(true);
+        const restoreCrop = () => {
+            if (!wasCrop) return;
+            wasCrop.it.crop = wasCrop.crop;
+            drawItemThumbs(wasCrop.it);
+            refreshDirty();
+            if (current === wasCrop.it) { enterCropMode(); draftCrop = wasCrop.draft; updateCropBox(); updateCropUI(); }
+        };
         const imgJobs = items.filter(isImgDirty);
         const txtJobs = items.filter(it => !it.shared && isTxtDirty(it));
         const total = imgJobs.length + txtJobs.length;
@@ -1855,7 +1869,7 @@
         if (rootHandle) {
             const ok = confirm(`將直接覆寫原資料夾中的 ${total} 個檔案（圖片 ${imgJobs.length}、文字 ${txtJobs.length}）。` +
                 (backupOriginal.checked ? `\n原檔會先備份到 ${BACKUP_DIR}/ 底下。` : '\n未勾選備份，原檔將無法復原。') + '\n確定要繼續嗎？');
-            if (!ok) return;
+            if (!ok) { restoreCrop(); return; }
             try {
                 const perm = await rootHandle.requestPermission({ mode: 'readwrite' });
                 if (perm !== 'granted') { setAlert('❌ 沒有取得寫入權限'); return; }
