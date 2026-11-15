@@ -647,7 +647,7 @@
             </div>
             <label class="check-row" id="backupRow" style="margin-top:12px;">
                 覆寫前備份原檔（_tool6_backup）
-                <input type="checkbox" id="backupOriginal" checked>
+                <input type="checkbox" id="backupOriginal" autocomplete="off">
             </label>
             <button id="btnExport" class="export-btn" disabled>輸出改動 (Ctrl+S)</button>
             <div class="hint" id="exportHint">只會寫入有改動的圖片或文字，並自動沿用原檔格式（PNG 存 PNG、JPG 存 JPG…），未更動的檔案不會重新儲存。</div>
@@ -770,6 +770,7 @@
     const cropWInput = $('cropW'), cropHInput = $('cropH');
     const cropInfo = $('cropInfo');
     const backupOriginal = $('backupOriginal');
+    backupOriginal.checked = false;   // 預設不備份（避免瀏覽器記住上次的勾選狀態）
     const backupRow = $('backupRow');
     const btnExport = $('btnExport');
     const alertDiv = $('alert');
@@ -1270,10 +1271,6 @@
         if (token !== loadToken) return;
         const s = src(it);
         viewport.classList.add('has-loaded-content');
-        stage.style.width = s.w + 'px';
-        stage.style.height = s.h + 'px';
-        previewCanvas.style.width = s.w + 'px';
-        previewCanvas.style.height = s.h + 'px';
         renderPreview();
         if (changed || !keep) fitView();
         updateCropUI();
@@ -1281,8 +1278,24 @@
         if (i >= 0) prefetchHi([vis[i + 1], vis[i - 1]]);
     }
 
+    // 中間檢視區的版面尺寸：裁切模式用來源原尺寸（裁切框座標），其他時候用實際輸出尺寸
+    function stageDims() {
+        const s = src(current);
+        return cropMode ? { w: s.w, h: s.h } : outDims(current);
+    }
+
+    function layoutStage() {
+        const d = stageDims();
+        const w = d.w + 'px', h = d.h + 'px';
+        if (stage.style.width === w && stage.style.height === h) return false;
+        stage.style.width = previewCanvas.style.width = w;
+        stage.style.height = previewCanvas.style.height = h;
+        return true;
+    }
+
     function renderPreview() {
         if (!current || !src(current)) return;
+        if (layoutStage()) fitView();
         drawView(previewCanvas, src(current), cropMode ? null : current.crop, cropMode ? null : outDims(current));
     }
 
@@ -1480,7 +1493,7 @@
 
     function fitView() {
         if (!current || !src(current)) return;
-        const s = src(current);
+        const s = stageDims();
         const vw = viewport.clientWidth, vh = viewport.clientHeight;
         view.s = Math.min(vw / s.w, vh / s.h) * 0.92;
         view.tx = (vw - s.w * view.s) / 2;
